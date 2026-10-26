@@ -1,12 +1,63 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>Jev — judge sandbox</title></head>
+<head><meta charset="utf-8"><title>Jev — judge sandbox</title>
+<style>
+  body { font-family: system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; }
+  textarea { width: 100%; } .chip { margin: 0.25rem 0.25rem 0.25rem 0; }
+  #card { border: 1px solid #ccc; border-radius: 8px; padding: 1rem; margin-top: 1rem; display: none; }
+  .bar { height: 10px; background: #eee; border-radius: 5px; } .fill { height: 10px; background: #2a7; border-radius: 5px; }
+  .fine { color: #555; font-size: 0.9em; }
+</style></head>
 <body>
   <h1>Jev: graduated-autonomy triage</h1>
-  <p>Paste a guest message. Jev returns a category (Confirm / Act / Ignore),
-     a confidence, a draft in the operator's voice, a route, and a reason.</p>
-  <textarea id="msg" rows="6" cols="80" placeholder="Paste a guest message here"></textarea>
+  <p>Paste a guest message. Jev returns a category, a confidence, a draft in the
+     operator's voice, a route, and a reason, plus the send right that category
+     has earned so far.</p>
+  <p>
+    <button class="chip" data-msg="Hi, we just got back and the door code is not working. We are standing outside with our bags.">Try: lockout</button>
+    <button class="chip" data-msg="Would it be possible to check out at 1pm instead of 11? Our flight home is late afternoon.">Try: late checkout</button>
+    <button class="chip" data-msg="Just confirming we received the receipt for the cleaning fee. All set on our end, thanks.">Try: receipt FYI</button>
+    <button class="chip" data-msg="The guests upstairs have played loud music past midnight two nights in a row and we can barely sleep.">Try: noise complaint</button>
+  </p>
+  <label>Property
+    <select id="prop">
+      <option>Cedar Hollow Owner's Unit 1N</option><option>Cedar Hollow Laundry Unit 1S</option>
+      <option>Cedar Hollow Studio 2N</option><option>Cedar Hollow Our Unit 2S</option>
+      <option>Stickney condo</option><option>Peter's House</option>
+    </select>
+  </label>
+  <textarea id="msg" rows="6" placeholder="Paste a guest message here"></textarea>
   <br><button id="go">Triage</button>
-  <pre id="out">Sandbox wiring lands with the core port build.</pre>
+  <div id="card">
+    <h2 id="cat"></h2>
+    <div class="bar"><div class="fill" id="confbar"></div></div>
+    <p id="conf"></p>
+    <p><strong>Draft:</strong> <span id="draft"></span></p>
+    <p><strong>Route:</strong> <span id="route"></span></p>
+    <p><strong>Why:</strong> <span id="reason"></span></p>
+    <p class="fine" id="meta"></p>
+  </div>
+  <p class="fine">Disclosure: pre-existing work is the operator's hand-labeled pilot
+     dataset and the hosting business behind it. Everything on this page and the
+     pipeline behind it was built during the hackathon, Oct 26 to Nov 4, 2026.</p>
+  <script>
+    document.querySelectorAll('.chip').forEach(b => b.onclick = () => {
+      document.getElementById('msg').value = b.dataset.msg; });
+    document.getElementById('go').onclick = async () => {
+      const r = await fetch('/triage', { method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ message: document.getElementById('msg').value,
+                               property: document.getElementById('prop').value }) });
+      const d = await r.json();
+      const card = document.getElementById('card'); card.style.display = 'block';
+      document.getElementById('cat').textContent = d.category + (d.failsafe ? ' (fail-safe: a human decides)' : '');
+      document.getElementById('confbar').style.width = Math.round(d.confidence * 100) + '%';
+      document.getElementById('conf').textContent = 'Confidence ' + Math.round(d.confidence * 100) + '%';
+      document.getElementById('draft').textContent = d.draft || '(no draft for this category)';
+      document.getElementById('route').textContent = d.route;
+      document.getElementById('reason').textContent = d.reason;
+      document.getElementById('meta').textContent =
+        'Tier path: ' + d.tier_path + ' · Cost: $' + d.cost_usd + ' · Send right today: ' + d.autonomy_right;
+    };
+  </script>
 </body>
 </html>

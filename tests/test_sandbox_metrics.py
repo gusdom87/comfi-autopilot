@@ -1,0 +1,38 @@
+import csv, importlib.util, os, sys
+
+ROOT = os.path.join(os.path.dirname(__file__), "..")
+sys.path.insert(0, os.path.join(ROOT, "src"))
+
+def load_mod(name, rel):
+    spec = importlib.util.spec_from_file_location(name, os.path.join(ROOT, rel))
+    mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+    return mod
+
+def test_sandbox_triage_shape_and_failsafe():
+    srv = load_mod("sandbox_server", "sandbox/server.py")
+    from jev.types import Decision, Category, FAIL_SAFE
+    fake = Decision(Category.ACT, 0.9, draft="On it.", route="cleaner", reason="r", tier_path="m")
+    out = srv.handle_triage({"message": "leak!", "property": "P"}, decide_fn=lambda p, m, c: fake)
+    assert out["category"] == "Act" and out["autonomy_right"] == "approve_first" and out["failsafe"] is False
+    out2 = srv.handle_triage({"message": "hi"}, decide_fn=lambda p, m, c: FAIL_SAFE)
+    assert out2["failsafe"] is True and out2["category"] == "Confirm"
+    html = open(os.path.join(ROOT, "sandbox", "index.html")).read()
+    assert html.count("data-msg") == 4 and "pre-existing work is the operator" in html
+
+def test_metrics_math(tmp_path):
+    met = load_mod("outcome_metrics", "metrics/outcome_metrics.py")
+    path = tmp_path / "w.csv"
+    rows = [
+        {"message_id": "1", "property": "P", "received_at": "2026-10-07T10:00:00+00:00", "first_response_at": "2026-10-07T11:00:00+00:00", "category": "Act", "responded_by": "va", "dispatch_at": "2026-10-07T10:30:00+00:00"},
+        {"message_id": "2", "property": "P", "received_at": "2026-10-07T10:00:00+00:00", "first_response_at": "2026-10-07T12:00:00+00:00", "category": "Act", "responded_by": "host", "dispatch_at": ""},
+        {"message_id": "3", "property": "P", "received_at": "2026-10-07T10:00:00Z", "first_response_at": "2026-10-07T13:00:00Z", "category": "Act", "responded_by": "system", "dispatch_at": ""},
+        {"message_id": "4", "property": "P", "received_at": "2026-10-07T10:00:00+00:00", "first_response_at": "", "category": "Act", "responded_by": "host", "dispatch_at": ""},
+        {"message_id": "5", "property": "P", "received_at": "2026-10-07T10:00:00+00:00", "first_response_at": "2026-10-07T10:05:00+00:00", "category": "Confirm", "responded_by": "host", "dispatch_at": ""},
+    ]
+    with open(path, "w", newline="") as fh:
+        w = csv.DictWriter(fh, fieldnames=list(rows[0])); w.writeheader(); w.writerows(rows)
+    s = met.summarize(met.load(str(path)))
+    assert s["urgent_response_median_min"] == 120.0 and s["urgent_response_p90_min"] == 180.0
+    assert s["urgent_missing_timestamps"] == 1
+    assert abs(s["no_touch_rate"] - 0.4) < 1e-9 and s["dispatch_median_min"] == 30.0
+    assert "Directional only" in met.render(s, s)
