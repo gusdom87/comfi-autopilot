@@ -81,8 +81,9 @@ def main() -> int:
 
     with open(args.dataset, encoding="utf-8") as fh:
         records = [json.loads(l) for l in fh if l.strip()]
+    text_of = lambda r: r.get("message") or r["message_preview"]
     examples = [
-        {"message": r["message_preview"], "category": r["ground_truth"]}
+        {"message": text_of(r), "category": r["ground_truth"]}
         for r in records[: args.examples]
     ]
     scored = records[args.examples:]
@@ -99,7 +100,7 @@ def main() -> int:
     client = CachingClient(inner, os.path.join(args.out, "cache"))
     rows = []
     for i, r in enumerate(scored):
-        d = decide(args.policy, r["message_preview"], {"property": r.get("property", "")},
+        d = decide(args.policy, text_of(r), {"property": r.get("property", "")},
                    client=client, examples=examples)
         rows.append({
             "id": i,
