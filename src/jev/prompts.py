@@ -30,6 +30,28 @@ Hard rules (these win over the descriptions above):
 - A check-in, checkout, or arrival-time question for a stay that is today
   or tomorrow: Act.
 
+Confirm hard rules (these also win over the descriptions):
+- Price talk about a stay that is not booked yet is Confirm: haggling over
+  the nightly rate, asking for a discount or a monthly price, quoting
+  numbers back and forth, explaining how they will pay. Money makes it Act
+  only when it is a change, cancellation, or disputed charge on an
+  existing booking.
+- An inquiry or booking request still being arranged is Confirm, even
+  when dates are named. It becomes Act only once a confirmed stay is
+  being changed.
+- Questions about what the home provides or how things work (linens,
+  supplies, amenities, parking, house rules) with nothing broken and no
+  change being asked for: Confirm. A guest asking what to do before they
+  leave (checkout steps) is Confirm even if the stay ends tomorrow; the
+  Act timing rule above is about arrival, check-in timing, and access.
+- A complaint or a vent with no request attached and nothing broken or
+  unsafe in the home: Confirm. It deserves a considered reply, not a
+  dispatch.
+
+Decision order: check the Act hard rules first and stop if one fires.
+Otherwise, if a human should weigh in before anything is sent, it is
+Confirm; if it needs no reply at all, it is Ignore.
+
 Tie-breaker: when torn between Act and Confirm and the message involves
 access, water, heat, or safety, choose Act. A missed Act is the worst
 outcome; a false Act costs the operator a glance.
