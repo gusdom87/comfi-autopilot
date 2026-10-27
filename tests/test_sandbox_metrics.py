@@ -17,7 +17,7 @@ def test_sandbox_triage_shape_and_failsafe():
     out2 = srv.handle_triage({"message": "hi"}, decide_fn=lambda p, m, c: FAIL_SAFE)
     assert out2["failsafe"] is True and out2["category"] == "Confirm"
     html = open(os.path.join(ROOT, "sandbox", "index.html")).read()
-    assert html.count("data-msg") == 4 and "pre-existing work is the operator" in html
+    assert html.count("data-msg") == 4 and "pre-existing — Jev, the decision model by TypeSafe AI" in html
 
 def test_metrics_math(tmp_path):
     met = load_mod("outcome_metrics", "metrics/outcome_metrics.py")

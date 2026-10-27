@@ -131,7 +131,7 @@ def test_http_endpoints_round_trip():
 
     try:
         status, body = req("GET", "/")
-        assert status == 200 and "Plays: the brain does the work" in body
+        assert status == 200 and "Plays: the operation at work" in body
         assert body.count("data-msg") == 4     # triage chips untouched
 
         status, body = req("POST", "/play", {"play": "early_checkin",

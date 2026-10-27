@@ -1,4 +1,11 @@
-# Judge sandbox
+# Comfi Autopilot — judge sandbox
+The demo page for Comfi Autopilot, an autonomous operations system for
+short-term rentals connected to Hospitable (guest communication, cleaning
+turnovers, in-stay issues, handyman dispatch, special requests, and
+exterior-camera oversight). The urgency decisions inside it are made by
+Jev, an existing decision tool by TypeSafe AI that the operator runs as a
+component of the system; Comfi Autopilot is the product on this page.
+
 One command, no build step:
   JEV_SANDBOX_PORT=8791 python3 sandbox/server.py
 Then open http://127.0.0.1:8791. The API key comes from the server
