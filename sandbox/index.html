@@ -7,6 +7,29 @@
   #card { border: 1px solid #ccc; border-radius: 8px; padding: 1rem; margin-top: 1rem; display: none; }
   .bar { height: 10px; background: #eee; border-radius: 5px; } .fill { height: 10px; background: #2a7; border-radius: 5px; }
   .fine { color: #555; font-size: 0.9em; }
+  hr { margin: 2.5rem 0 1.5rem; border: none; border-top: 2px solid #ddd; }
+  .staged { background: #fff7e6; border: 1px solid #d9a62e; border-radius: 8px; padding: 0.7rem 1rem; }
+  .timeline { margin-top: 1rem; }
+  .runhead { border: 1px solid #bbb; border-radius: 8px; padding: 0.7rem 1rem; background: #f7f7f7; font-size: 1.05em; }
+  .step { border-left: 6px solid #ccc; background: #fbfbfb; border-radius: 0 8px 8px 0;
+          padding: 0.6rem 1rem; margin: 0.5rem 0 0.5rem 0.4rem; }
+  .step.s-done { border-left-color: #2a7; }
+  .step.s-held { border-left-color: #d9a62e; background: #fffdf4; }
+  .step.s-waiting { border-left-color: #36c; background: #f4f8ff; }
+  .step.s-failed { border-left-color: #c33; background: #fff5f5; }
+  .step.s-skipped, .step.s-pending { border-left-color: #bbb; color: #666; }
+  .step .sname { font-weight: 700; font-size: 1.05em; }
+  .kind { display: inline-block; font-size: 0.8em; font-weight: 700; text-transform: uppercase;
+          background: #e8e8e8; border-radius: 4px; padding: 0.1em 0.5em; margin-left: 0.4em; }
+  .kind.k-action { background: #fde9c8; } .kind.k-wait { background: #d6e6ff; }
+  .status { font-weight: 700; text-transform: uppercase; font-size: 0.9em; }
+  .gate { margin-top: 0.4rem; background: #fff3d1; border: 1px dashed #d9a62e; border-radius: 6px;
+          padding: 0.4rem 0.7rem; font-size: 0.98em; }
+  .draft { margin-top: 0.4rem; border-left: 3px solid #2a7; padding: 0.2rem 0.7rem; color: #222; }
+  .sim { margin-top: 0.3rem; font-weight: 700; color: #2a7; }
+  .heldnote { margin-top: 0.3rem; font-weight: 700; color: #9a6d00; }
+  .err { color: #b00; font-weight: 600; }
+  .bigbtn { font-size: 1.05em; padding: 0.45em 1em; margin: 0.4rem 0.4rem 0.4rem 0; }
 </style></head>
 <body>
   <h1>Jev: graduated-autonomy triage</h1>
@@ -37,6 +60,48 @@
     <p><strong>Why:</strong> <span id="reason"></span></p>
     <p class="fine" id="meta"></p>
   </div>
+
+  <hr>
+  <h2>Plays: the brain does the work</h2>
+  <p class="staged"><strong>Staged demo world.</strong> The properties, turnovers,
+     cleaners, and arrivals below are fixture data — no real guest data anywhere.
+     Every send in a play is <strong>simulated or held for approval</strong>:
+     nothing real is sent and nothing real is charged. Action steps show the
+     gate the autonomy ladder applies before anything may execute.</p>
+
+  <h3>Play: early check-in</h3>
+  <p>A guest asks to arrive early. Jev extracts the requested time, checks the
+     staged calendar (is there a same-day turnover? who cleans? when is the unit
+     actually ready?), drafts the reply, and gates the early check-in charge —
+     the highest-stakes action — for a human. When the answer depends on the
+     cleaner, the run waits, and the cleaner's report finishes the chain.</p>
+  <label>Property
+    <select id="ec-prop">
+      <option value="cedar-hollow-2n">Studio 2N, Cedar Hollow — turnover that day, ready 2:00 PM</option>
+      <option value="cedar-hollow-1n">Owner's Unit 1N, Cedar Hollow — no turnover, ready 12:00 PM</option>
+      <option value="peters-house">Peter's House — late turnover, ready 3:30 PM</option>
+    </select>
+  </label>
+  <label>Arrival date
+    <select id="ec-date"><option>2026-10-28</option></select>
+  </label>
+  <textarea id="ec-msg" rows="3">Hi! Our flight lands early — could we check in at 1pm instead of 4? Happy to pay an early check-in fee if that helps.</textarea>
+  <br><button class="bigbtn" id="ec-run">Run the early check-in play</button>
+  <div class="timeline" id="ec-timeline"></div>
+  <p id="ec-eventrow" style="display:none">
+    <button class="bigbtn" id="ec-done">Cleaner reports done (1:32 PM)</button>
+    <span class="fine">Delivers the <code>cleaner_done</code> event to the waiting run.</span>
+  </p>
+
+  <h3>Play: cleaner done → guest ready</h3>
+  <p>No guest message at all: the cleaner finishing is the trigger. Jev verifies
+     the clean against the record, then the arriving guest hears the place is
+     ready. If the cleaner flagged a problem, the guest hears nothing and a
+     human takes over.</p>
+  <button class="bigbtn" id="cd-good">Cleaner finished — Studio 2N, guest arriving today</button>
+  <button class="bigbtn" id="cd-flag">Cleaner finished — Peter's House (problem flagged)</button>
+  <div class="timeline" id="cd-timeline"></div>
+
   <p class="fine">Disclosure: pre-existing work is the operator's hand-labeled pilot
      dataset and the hosting business behind it. Everything on this page and the
      pipeline behind it was built during the hackathon, Oct 26 to Nov 4, 2026.</p>
@@ -58,6 +123,89 @@
       document.getElementById('meta').textContent =
         'Tier path: ' + d.tier_path + ' · Cost: $' + d.cost_usd + ' · Send right today: ' + d.autonomy_right;
     };
+
+    // ---- plays ------------------------------------------------------
+    const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+    const post = async (path, body) => {
+      const r = await fetch(path, { method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(body) });
+      return r.json();
+    };
+
+    function stepResult(s) {
+      const r = s.result || {}; let out = '';
+      if (r.requested) out += '<div>Requested arrival: <strong>' + esc(r.requested) + '</strong></div>';
+      if (r.outcome) out += '<div>Outcome: <strong>' + esc(r.outcome) + '</strong>' +
+        (r.ready_at ? ' · unit ready at ' + esc(r.ready_at) : '') +
+        (r.same_day_turnover ? ' · same-day turnover' : ' · no same-day turnover') +
+        (r.cleaner ? ' · cleaner: ' + esc(r.cleaner) : '') + '</div>';
+      if (r.draft) out += '<div class="draft">&ldquo;' + esc(r.draft) + '&rdquo;</div>';
+      if (r.charge) out += '<div>Charge: <strong>$' + r.charge.amount_usd + '</strong> — ' +
+        esc(r.charge.description) + ' (' + esc(r.charge.property_id) + ', ' + esc(r.charge.date) + ')</div>';
+      if (r.guest) out += '<div>Guest: ' + esc(r.guest) + '</div>';
+      if (r.clean_status) out += '<div>Clean on record: <strong>' + esc(r.clean_status) + '</strong>' +
+        (r.finished_at ? ' · finished ' + esc(r.finished_at) : '') +
+        (r.problem_flag ? ' · <span class="err">problem flag: ' + esc(r.problem_flag) + '</span>' : ' · no problem flag') + '</div>';
+      if (r.arrival_today !== undefined) out += '<div>Arrival today: <strong>' +
+        (r.arrival_today ? 'yes' : 'no') +
+        (r.property ? ' · ' + esc(r.property) : '') + '</div>';
+      if (r.error) out += '<div class="err">' + esc(r.error) + (r.on_record ? ' (on record: ' + esc(r.on_record) + ')' : '') + '</div>';
+      if (r.executed === true) out += '<div class="sim">EXECUTED through the simulated channel — no real send happened</div>';
+      if (r.executed === false) out += '<div class="heldnote">HELD for approval — nothing was sent</div>';
+      return out;
+    }
+
+    function renderRun(run, mount) {
+      if (run.error) { mount.innerHTML = '<p class="err">' + esc(run.error) + '</p>'; return; }
+      let h = '<div class="runhead">Run <code>' + esc(run.run_id) + '</code> · play <strong>' +
+        esc(run.play) + '</strong> · status: <span class="status">' + esc(run.status) + '</span>';
+      if (run.outcome) h += ' · outcome: <strong>' + esc(run.outcome) + '</strong>';
+      if (run.awaiting_approval && run.awaiting_approval.length)
+        h += '<br>Awaiting approval: <strong>' + run.awaiting_approval.map(esc).join(', ') + '</strong>';
+      if (run.hold_reason) h += '<br><span class="err">Held for a human: ' + esc(run.hold_reason) + '</span>';
+      h += '</div>';
+      run.steps.forEach((s, i) => {
+        h += '<div class="step s-' + esc(s.status) + '"><span class="sname">' + (i + 1) + '. ' +
+          esc(s.name) + '</span><span class="kind k-' + esc(s.kind) + '">' + esc(s.kind) +
+          '</span> · <span class="status">' + esc(s.status) + '</span>';
+        if (s.kind === 'action')
+          h += '<div class="gate">GATE — action: <strong>' + esc(s.action_key) + '</strong> · stake: ' +
+            esc(s.stake) + ' · right on the ladder: <strong>' + esc(s.required_right || '—') +
+            '</strong> · disposition: <strong>' + esc((s.disposition || '').toUpperCase()) + '</strong></div>';
+        if (s.kind === 'wait')
+          h += '<div class="gate">Waits for event: <strong>' + esc((s.result && s.result.event) || 'cleaner_done') + '</strong></div>';
+        h += stepResult(s) + '</div>';
+      });
+      mount.innerHTML = h;
+    }
+
+    let ecRunId = null;
+    document.getElementById('ec-run').onclick = async () => {
+      const run = await post('/play', { play: 'early_checkin',
+        message: document.getElementById('ec-msg').value,
+        property_id: document.getElementById('ec-prop').value,
+        date: document.getElementById('ec-date').value });
+      ecRunId = run.run_id || null;
+      renderRun(run, document.getElementById('ec-timeline'));
+      document.getElementById('ec-eventrow').style.display = (run.status === 'waiting') ? 'block' : 'none';
+    };
+    document.getElementById('ec-done').onclick = async () => {
+      if (!ecRunId) return;
+      const run = await post('/event', { run_id: ecRunId, event: 'cleaner_done',
+        payload: { cleaner_id: 'cleaner-cristina', finished_at: '1:32 PM' } });
+      renderRun(run, document.getElementById('ec-timeline'));
+      document.getElementById('ec-eventrow').style.display = (run.status === 'waiting') ? 'block' : 'none';
+    };
+
+    const cdFire = body => async () => {
+      const run = await post('/play', Object.assign(
+        { play: 'cleaner_done', date: '2026-10-28' }, body));
+      renderRun(run, document.getElementById('cd-timeline'));
+    };
+    document.getElementById('cd-good').onclick = cdFire(
+      { property_id: 'cedar-hollow-2n', cleaner_id: 'cleaner-cristina', finished_at: '1:32 PM' });
+    document.getElementById('cd-flag').onclick = cdFire(
+      { property_id: 'peters-house', cleaner_id: 'cleaner-jader', finished_at: '3:05 PM' });
   </script>
 </body>
 </html>
