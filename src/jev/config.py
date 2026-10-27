@@ -10,7 +10,10 @@ class Config:
     tier_fast: str = "muse-spark-1.3"
     tier_deep: str = "muse-wonder-1.0"
     daily_spend_cap_usd: float = 15.0
-    request_timeout_secs: float = 20.0
+    # 75 s: the Oct 27 ablation showed Wonder's reasoning latency routinely
+    # exceeds 20 s (27 of 83 calls timed out and fell back to Confirm).
+    # The fail-safe makes a long ceiling safe: worst case is a Confirm.
+    request_timeout_secs: float = 75.0
 
     @classmethod
     def from_env(cls) -> "Config":
