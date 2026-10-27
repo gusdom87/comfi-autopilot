@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en">
-<head><meta charset="utf-8"><title>Jev — judge sandbox</title>
+<head><meta charset="utf-8"><title>Comfi Autopilot — judge sandbox</title>
 <style>
   body { font-family: system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; }
   textarea { width: 100%; } .chip { margin: 0.25rem 0.25rem 0.25rem 0; }
@@ -32,10 +32,13 @@
   .bigbtn { font-size: 1.05em; padding: 0.45em 1em; margin: 0.4rem 0.4rem 0.4rem 0; }
 </style></head>
 <body>
-  <h1>Jev: graduated-autonomy triage</h1>
-  <p>Paste a guest message. Jev returns a category, a confidence, a draft in the
+  <h1>Comfi Autopilot</h1>
+  <p>An autonomous operations system for short-term rentals, connected to
+     Hospitable. Start with the first step of the operation: paste a guest
+     message. Triage returns a category, a confidence, a draft in the
      operator's voice, a route, and a reason, plus the send right that category
-     has earned so far.</p>
+     has earned so far. The urgency decision itself is made by Jev, an existing
+     decision tool (TypeSafe AI) the operator runs inside Comfi Autopilot.</p>
   <p>
     <button class="chip" data-msg="Hi, we just got back and the door code is not working. We are standing outside with our bags.">Try: lockout</button>
     <button class="chip" data-msg="Would it be possible to check out at 1pm instead of 11? Our flight home is late afternoon.">Try: late checkout</button>
@@ -62,7 +65,7 @@
   </div>
 
   <hr>
-  <h2>Plays: the brain does the work</h2>
+  <h2>Plays: the operation at work</h2>
   <p class="staged"><strong>Staged demo world.</strong> The properties, turnovers,
      cleaners, and arrivals below are fixture data — no real guest data anywhere.
      Every send in a play is <strong>simulated or held for approval</strong>:
@@ -70,7 +73,7 @@
      gate the autonomy ladder applies before anything may execute.</p>
 
   <h3>Play: early check-in</h3>
-  <p>A guest asks to arrive early. Jev extracts the requested time, checks the
+  <p>A guest asks to arrive early. Comfi Autopilot extracts the requested time, checks the
      staged calendar (is there a same-day turnover? who cleans? when is the unit
      actually ready?), drafts the reply, and gates the early check-in charge —
      the highest-stakes action — for a human. When the answer depends on the
@@ -94,7 +97,7 @@
   </p>
 
   <h3>Play: cleaner done → guest ready</h3>
-  <p>No guest message at all: the cleaner finishing is the trigger. Jev verifies
+  <p>No guest message at all: the cleaner finishing is the trigger. Comfi Autopilot verifies
      the clean against the record, then the arriving guest hears the place is
      ready. If the cleaner flagged a problem, the guest hears nothing and a
      human takes over.</p>
@@ -102,9 +105,10 @@
   <button class="bigbtn" id="cd-flag">Cleaner finished — Peter's House (problem flagged)</button>
   <div class="timeline" id="cd-timeline"></div>
 
-  <p class="fine">Disclosure: pre-existing work is the operator's hand-labeled pilot
-     dataset and the hosting business behind it. Everything on this page and the
-     pipeline behind it was built during the hackathon, Oct 26 to Nov 4, 2026.</p>
+  <p class="fine">Disclosure: pre-existing — Jev, the decision model by TypeSafe AI
+     used inside Comfi Autopilot, the operator's hand-labeled dataset, and the
+     Oct 7–14 pilot. Everything else on this page — the Comfi Autopilot layer —
+     was built during the hackathon, Oct 26 to Nov 4, 2026.</p>
   <script>
     document.querySelectorAll('.chip').forEach(b => b.onclick = () => {
       document.getElementById('msg').value = b.dataset.msg; });
