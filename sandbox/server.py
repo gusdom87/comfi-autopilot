@@ -15,7 +15,9 @@ from jev.plays import FixtureContext, PlayEngine, default_fixture_data  # noqa: 
 from jev.plays import get as get_play  # noqa: E402
 from jev.plays.camera_check import (  # noqa: E402
     handle_camera_event, handle_camera_offline_event,
-    handle_camera_online_event, handle_post_turnover_event)
+    handle_camera_online_event, handle_guest_lockout_event,
+    handle_guest_unsafe_event, handle_post_turnover_event,
+    handle_sunset_check_event)
 from jev.plays.cleaner_done import handle_cleaner_done_event  # noqa: E402
 from jev.tiers import decide as _decide  # noqa: E402
 from jev.types import FAIL_SAFE  # noqa: E402
@@ -74,6 +76,35 @@ def handle_play(payload: dict, engine=ENGINE, runs=None) -> dict:
                            "mention")}
         try:
             run = handle_camera_offline_event(engine, event)
+        except ValueError as exc:
+            return {"error": str(exc)}
+        runs[run.run_id] = run
+        return run.to_dict()
+    if play_name == "guest_lockout":
+        event = {k: str(payload.get(k, "")).strip()
+                 for k in ("property_id", "date", "camera", "ts",
+                           "frame_id")}
+        try:
+            run = handle_guest_lockout_event(engine, event)
+        except ValueError as exc:
+            return {"error": str(exc)}
+        runs[run.run_id] = run
+        return run.to_dict()
+    if play_name == "guest_unsafe":
+        event = {k: str(payload.get(k, "")).strip()
+                 for k in ("property_id", "date", "kind")}
+        try:
+            run = handle_guest_unsafe_event(engine, event)
+        except ValueError as exc:
+            return {"error": str(exc)}
+        runs[run.run_id] = run
+        return run.to_dict()
+    if play_name == "camera_sunset_check":
+        event = {k: str(payload.get(k, "")).strip()
+                 for k in ("property_id", "date", "kind", "camera",
+                           "ts", "frame_id")}
+        try:
+            run = handle_sunset_check_event(engine, event)
         except ValueError as exc:
             return {"error": str(exc)}
         runs[run.run_id] = run

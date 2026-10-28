@@ -189,6 +189,91 @@ def test_play_camera_check_vacant_mode_notifies_with_still():
     assert "attached in the simulated" in notify["result"]["summary"]
 
 
+def test_play_camera_covered_view_blocked_urgent():
+    srv = _srv()
+    engine, runs = _fresh()
+    out = srv.handle_play({"play": "camera_check",
+                           "property_id": "cedar-hollow-1n",
+                           "date": "2026-10-30", "camera": "front-door",
+                           "ts": "2026-10-30T21:05:00", "frame_id": "f10"},
+                          engine=engine, runs=runs)
+    assert out["status"] == "completed" and out["outcome"] == "notify_operator"
+    classify = _step(out, "classify_frame")
+    assert classify["result"]["scene"] == "nothing_notable"
+    assert classify["result"]["view"] == "blocked"
+    assert classify["result"]["route"] == "notify"
+    notify = _step(out, "notify_operator")
+    assert notify["disposition"] == "hold" and notify["status"] == "held"
+    assert notify["result"]["executed"] is False
+    assert notify["result"]["urgent"] is True
+    assert "One-night weekend stay" in notify["result"]["summary"]
+
+
+def test_play_guest_lockout_notifies_operator_held():
+    srv = _srv()
+    engine, runs = _fresh()
+    out = srv.handle_play({"play": "guest_lockout",
+                           "property_id": "cedar-hollow-2n",
+                           "date": "2026-10-28", "camera": "front-door",
+                           "ts": "2026-10-28T15:52:00", "frame_id": "f13"},
+                          engine=engine, runs=runs)
+    assert out["play"] == "guest_lockout"
+    assert out["status"] == "completed"
+    assert out["outcome"] == "notify_operator"
+    assemble = _step(out, "assemble_door_frame")
+    assert assemble["result"]["frame_id"] == "f13"
+    assert assemble["result"]["door"] == "closed"
+    notify = _step(out, "notify_operator")
+    assert notify["action_key"] == "notify_operator"
+    assert notify["disposition"] == "hold" and notify["status"] == "held"
+    assert notify["result"]["executed"] is False
+    assert "a person is at the door and the door reads shut" \
+        in notify["result"]["summary"]
+    assert srv.handle_get_run(out["run_id"], runs=runs)["run_id"] \
+        == out["run_id"]
+
+
+def test_play_guest_unsafe_assembles_latest_frames_urgent():
+    srv = _srv()
+    engine, runs = _fresh()
+    out = srv.handle_play({"play": "guest_unsafe",
+                           "property_id": "cedar-hollow-2n",
+                           "date": "2026-10-28", "kind": "guest_unsafe"},
+                          engine=engine, runs=runs)
+    assert out["play"] == "guest_unsafe"
+    assert out["status"] == "completed"
+    assert out["outcome"] == "notify_operator"
+    assemble = _step(out, "assemble_latest_frames")
+    assert assemble["result"]["frames"] == ["f16", "f14", "f13"]
+    notify = _step(out, "notify_operator")
+    assert notify["disposition"] == "hold" and notify["status"] == "held"
+    assert notify["result"]["executed"] is False
+    assert notify["result"]["urgent"] is True
+    assert notify["result"]["summary"].startswith("URGENT")
+
+
+def test_play_sunset_check_second_night_bulb_line():
+    srv = _srv()
+    engine, runs = _fresh()
+    out = srv.handle_play({"play": "camera_sunset_check",
+                           "property_id": "cedar-hollow-2n",
+                           "date": "2026-10-28", "kind": "sunset_check",
+                           "camera": "front-door",
+                           "ts": "2026-10-28T18:47:00", "frame_id": "f16"},
+                          engine=engine, runs=runs)
+    assert out["play"] == "camera_sunset_check"
+    assert out["status"] == "completed"
+    assert out["outcome"] == "notify_operator"
+    entry = _step(out, "classify_entry")
+    assert entry["result"]["lights"] == "off"
+    assert entry["result"]["second_night"] is True
+    notify = _step(out, "notify_operator")
+    assert notify["status"] == "held"
+    assert notify["result"]["executed"] is False
+    assert "bulb change belongs on the next turnover list" \
+        in notify["result"]["summary"]
+
+
 def test_play_camera_post_turnover_door_open_notifies():
     srv = _srv()
     engine, runs = _fresh()

@@ -56,14 +56,44 @@ Two sibling plays share this module's rails, vision, and gates:
     classification that matters: door open or lights on at a home
     with no stay in progress notifies the operator; door closed and
     lights off logs; anything the frame cannot settle notifies too.
+
+The final-list batch (Gus's roadmap of record, Oct 27) adds four
+more cases on the same rails:
+
+  - CAMERA COVERED OR TURNED (case #17, inside CameraCheck): the
+    classification's view field reads blocked or shifted -> the
+    operator is notified regardless of scene. A merely unclear
+    frame never counts — the view must read blocked or shifted
+    explicitly. On a one-night weekend stay the notification is
+    marked urgent.
+  - STUCK AT THE DOOR (case #10): (a) a guest lockout report
+    (GuestLockout) assembles the door camera's latest frame and
+    its door state for the operator — it never messages the guest;
+    (b) a dwell pattern inside CameraCheck: a person at the door,
+    door shut, inside the arrival window, still there on a second
+    frame minutes later -> the same operator notification. The
+    claim language is exact and small: a person is at the door
+    and the door reads shut. Never an identity, never a reason.
+  - GUEST FEELS UNSAFE (case #49, GuestUnsafe): a guest reports
+    someone outside or knocking; the operator gets the property's
+    latest frames, marked urgent. Retrieval only — the frames'
+    existing classifications are all it says. No frames on record
+    is stated plainly in the notification: the absence is itself
+    the information.
+  - DARK ENTRY (case #11, SunsetCheck): a scheduled sunset_check
+    on an arrival day reads the entry frame's lights field. Dark
+    with a guest arriving notifies the operator; a second
+    consecutive dark night adds the bulb change to the next
+    turnover list. No arrival that day logs only.
 """
+from datetime import date as _date_cls
 from datetime import datetime
 
 from ..types import Decision
 from .context import fmt_time, to_minutes
 from .early_checkin import _effect
 from .engine import Play, PlayRun, Step
-from .vision import Classification, FixtureVision
+from .vision import Classification, FixtureVision, frames_for
 
 
 def _ts_minutes(ts: str) -> int | None:
@@ -77,6 +107,65 @@ def _ts_minutes(ts: str) -> int | None:
     return dt.hour * 60 + dt.minute
 
 
+# Stuck-at-the-door dwell memory (case #10b). A single frame of a
+# person at a door is unremarkable; the pattern is the SAME read —
+# person present, door shut, inside the arrival window — on a
+# second frame minutes later. The play keeps the qualifying frames'
+# minutes per (property, date, camera) so a later frame can check
+# them. In-process and short-lived by construction: the staged
+# stand-in for the recent-frame store a real camera system keeps.
+_DOOR_FRAMES: dict[tuple, list[int]] = {}
+DWELL_MIN_GAP_MINUTES = 5       # "several minutes", not a blip
+DWELL_MAX_GAP_MINUTES = 90      # beyond this it is a new episode
+_PERSON_SCENES = ("expected_guest", "unknown_person")
+
+
+def _reset_door_frames() -> None:
+    """Test hook: clear the dwell memory between scenarios."""
+    _DOOR_FRAMES.clear()
+
+
+def _dwell_reason(run: PlayRun, event: dict,
+                  cls: Classification | None, exp: dict,
+                  event_minutes: int | None) -> str | None:
+    """The stuck-at-the-door read for this frame, or None. Side
+    effect: a qualifying frame (person scene, door shut, arrival
+    window active) is recorded whether or not it fires, so the
+    NEXT frame can complete the pattern."""
+    if cls is None or event_minutes is None:
+        return None
+    if cls.scene not in _PERSON_SCENES or cls.door != "closed":
+        return None
+    window = exp.get("arrival_window")
+    if window is None or not (window[0] <= event_minutes <= window[1]):
+        return None
+    key = (run.property_id, run.date, str(event.get("camera", "")))
+    prior = [t for t in _DOOR_FRAMES.get(key, [])
+             if DWELL_MIN_GAP_MINUTES <= event_minutes - t
+             <= DWELL_MAX_GAP_MINUTES]
+    _DOOR_FRAMES.setdefault(key, []).append(event_minutes)
+    if not prior:
+        return None
+    return ("a person is at the door and the door reads shut — a "
+            "frame minutes earlier showed the same, inside the "
+            "arrival window (stuck-at-the-door pattern)")
+
+
+def _is_one_night_weekend(stay, date_str: str) -> bool:
+    """True when the stay covering this date is a single night and
+    that night is a Friday or Saturday — the stay shape where a
+    compromised camera (case #17) matters most."""
+    if stay is None or not stay.arrival_date or not stay.departure_date:
+        return False
+    try:
+        nights = (_date_cls.fromisoformat(stay.departure_date)
+                  - _date_cls.fromisoformat(stay.arrival_date)).days
+        weekday = _date_cls.fromisoformat(date_str).weekday()
+    except ValueError:
+        return False
+    return nights == 1 and weekday in (4, 5)   # Friday, Saturday
+
+
 def _route_for(cls: Classification | None, exp: dict,
                event_minutes: int | None) -> tuple[str, str]:
     """(route, reason): route is 'log' or 'notify'. The bias is
@@ -84,6 +173,14 @@ def _route_for(cls: Classification | None, exp: dict,
     to the operator; only the reconciled and the trivial are logged."""
     if cls is None:
         return "notify", "the camera frame could not be classified"
+    if cls.view in ("blocked", "shifted"):
+        # Case #17: the camera itself is compromised. That outranks
+        # the scene — a covered camera makes every other read on
+        # this frame worthless, including a trivial one. Only an
+        # explicit blocked/shifted read lands here; an unclear
+        # frame's view stays "unknown" and routes on its scene.
+        return "notify", (f"the camera view reads {cls.view} — the "
+                          f"camera itself needs attention")
     scene = cls.scene
     if scene == "unclear":
         return "notify", "the camera frame was unclear"
@@ -198,6 +295,14 @@ class CameraCheck(Play):
             for w in work_windows)
         vacant = bool(ctx.is_closed(run.property_id, run.date)) \
             if hasattr(ctx, "is_closed") else False
+        arrival_window = None
+        if arrival is not None:
+            checkin = to_minutes(arrival.checkin_time) \
+                if arrival.checkin_time \
+                else to_minutes(prop.standard_checkin)
+            # The window a guest plausibly arrives (and can get
+            # stuck) in: the hours around the check-in time.
+            arrival_window = (checkin - 180, checkin + 60)
         exp = {
             "property_name": prop.name,
             "arrival_guest": arrival.guest_name if arrival else "",
@@ -209,6 +314,8 @@ class CameraCheck(Play):
             "vacant": vacant,
             "work_window_active": work_active,
             "work_windows": [w.label for w in work_windows],
+            "arrival_window": arrival_window,
+            "one_night_weekend": _is_one_night_weekend(stay, run.date),
         }
         run.data["expectation"] = exp
         step.result = {
@@ -220,6 +327,7 @@ class CameraCheck(Play):
             "vacant": vacant,
             "work_window_active": work_active,
             "work_windows": exp["work_windows"],
+            "one_night_weekend": exp["one_night_weekend"],
         }
 
     def _classify(self, engine, run: PlayRun, step: Step) -> None:
@@ -231,7 +339,14 @@ class CameraCheck(Play):
         except Exception:               # vision is external; fail safe
             cls = None
         exp = run.data["expectation"]
-        route, reason = _route_for(cls, exp, _ts_minutes(event.get("ts", "")))
+        event_minutes = _ts_minutes(event.get("ts", ""))
+        route, reason = _route_for(cls, exp, event_minutes)
+        dwell = _dwell_reason(run, event, cls, exp, event_minutes)
+        if dwell is not None:
+            # Case #10b: the pattern outranks the single-frame
+            # route (an expected guest at a shut door would
+            # otherwise just log).
+            route, reason = "notify", dwell
         run.data.update({
             "classification": cls, "route": route,
             "outcome": "logged" if route == "log" else "notify_operator",
@@ -246,6 +361,7 @@ class CameraCheck(Play):
             "vision_source": cls.source if cls else "",
             "door": cls.door if cls else "unknown",
             "lights": cls.lights if cls else "unknown",
+            "view": cls.view if cls else "unknown",
             "route": route, "reason": reason,
         }
 
@@ -306,11 +422,23 @@ class CameraCheck(Play):
             summary += (f" Still: frame {frame_id} — a still from "
                         f"that frame is attached in the simulated "
                         f"notification channel.")
+        urgent = bool(cls is not None
+                      and cls.view in ("blocked", "shifted")
+                      and exp.get("one_night_weekend"))
+        if urgent:
+            # Case #17's extra weight: a compromised camera on a
+            # one-night weekend stay is the pattern that precedes
+            # the worst nights in this business.
+            summary += (" One-night weekend stay — treat as urgent: "
+                        "the camera is compromised on the stay "
+                        "shape where that matters most.")
         step.result = {"summary": summary,
                        "scene": cls.scene if cls else "unclassified",
                        "reason": run.data["flag_reason"],
                        "frame_id": frame_id,
                        "vacant": bool(exp.get("vacant")),
+                       "view": cls.view if cls else "unknown",
+                       "urgent": urgent,
                        **_effect(step)}
 
 
@@ -704,4 +832,475 @@ def handle_post_turnover_event(engine, payload: dict,
                        f"{frame_id}",
                        property_id, date)
     engine.handle_event(run, "post_turnover", payload)
+    return run
+
+
+# ---------------------------------------------------------------------
+# Guest lockout: stuck at the door, report side (final-list case #10a)
+# ---------------------------------------------------------------------
+
+def _classify_guarded(vision, frame_id: str) -> Classification | None:
+    try:
+        return vision.classify(frame_id)
+    except Exception:               # vision is external; fail safe
+        return None
+
+
+def _door_word(cls: Classification | None) -> str:
+    """What the frame settles about the door, in the notification's
+    words: 'shut', 'open', or an honest not-settled."""
+    if cls is None:
+        return "could not be settled"
+    return {"closed": "shut", "open": "open"}.get(cls.door,
+                                                  "could not be settled")
+
+
+def _person_at_door(cls: Classification | None) -> bool:
+    if cls is None:
+        return False
+    if cls.scene in _PERSON_SCENES or cls.scene == "large_gathering":
+        return True
+    return bool(cls.people_count)
+
+
+class GuestLockout(Play):
+    """A guest reports they cannot get in. The play assembles what
+    the door camera last saw — the latest frame reference for the
+    property's door camera and its staged door state — and hands it
+    to the OPERATOR as a notification, so the human helping the
+    guest works from the picture, not a guess. This play sends
+    nothing to the guest: no code, no reassurance, nothing. The
+    language stays exact and small — a person is at the door and
+    the door reads shut (or open, or unsettled, as the frame says).
+    Never an identity, never a claim about why they are stuck."""
+
+    name = "guest_lockout"
+    description = "A guest reports a lockout: assemble the door " \
+                  "camera's latest frame and door state for the " \
+                  "operator."
+
+    def __init__(self, vision=None):
+        self.vision = vision if vision is not None else FixtureVision()
+
+    def trigger(self, decision: Decision, message: str, context: dict) -> bool:
+        # Event-triggered only: the guest_lockout event (raised when
+        # the guest-message side reports a lockout).
+        return False
+
+    def build(self, run: PlayRun) -> list[Step]:
+        return [
+            Step("wait_guest_lockout", "wait", event="guest_lockout"),
+            Step("assemble_door_frame", "internal",
+                 run=self._assemble),
+            Step("notify_operator", "action", run=self._notify,
+                 action_key="notify_operator"),
+        ]
+
+    # -- helpers -------------------------------------------------------
+    def _event(self, run: PlayRun) -> dict:
+        return run.data.get("event:guest_lockout", {})
+
+    # -- steps ---------------------------------------------------------
+    def _assemble(self, engine, run: PlayRun, step: Step) -> None:
+        ctx = engine.context
+        event = self._event(run)
+        prop = ctx.get_property(run.property_id)
+        if prop is None:
+            step.status = "failed"
+            step.result = {"error": "no reality data for property"}
+            run.hold_reason = "lockout report for an unknown property"
+            return
+        arrival = ctx.get_arrival(run.property_id, run.date)
+        stay = ctx.get_stay(run.property_id, run.date)
+        camera = str(event.get("camera", "")).strip() or "front-door"
+        # The frame the report is checked against: the event names
+        # it (a live webhook would), else the latest door-camera
+        # frame on record at or before the report's timestamp.
+        frame_id = str(event.get("frame_id", "")).strip()
+        if not frame_id:
+            event_minutes = _ts_minutes(event.get("ts", ""))
+            candidates = frames_for(run.property_id, run.date, camera)
+            if event_minutes is not None:
+                candidates = [r for r in candidates
+                              if (_ts_minutes(r["ts"]) or 0)
+                              <= event_minutes] or candidates
+            if candidates:
+                frame_id = candidates[-1]["frame_id"]
+        cls = _classify_guarded(self.vision, frame_id) if frame_id \
+            else None
+        run.data.update({
+            "property_name": prop.name, "camera": camera,
+            "frame_id": frame_id, "classification": cls,
+            "guest": (arrival.guest_name if arrival else
+                      stay.guest_name if stay else ""),
+            "context_kind": ("arriving today" if arrival else
+                             "mid-stay" if stay else "none on record"),
+        })
+        step.result = {
+            "property": prop.name, "camera": camera,
+            "frame_id": frame_id,
+            "scene": cls.scene if cls else "unclassified",
+            "door": cls.door if cls else "unknown",
+            "note": cls.note if cls else "",
+            "guest": run.data["guest"],
+            "context": run.data["context_kind"],
+        }
+
+    def _notify(self, engine, run: PlayRun, step: Step) -> None:
+        cls: Classification | None = run.data["classification"]
+        frame_id = run.data["frame_id"]
+        if not frame_id or cls is None:
+            seen = ("no usable camera frame is on record for this "
+                    "door today, so there is nothing to check the "
+                    "report against")
+        elif _person_at_door(cls):
+            seen = (f"latest frame {frame_id}: a person is at the "
+                    f"door and the door reads {_door_word(cls)}")
+            if cls.note:
+                seen += f" — {cls.note}"
+        else:
+            seen = (f"latest frame {frame_id} does not clearly show "
+                    f"a person at the door (scene read: "
+                    f"{cls.scene.replace('_', ' ')}; the door reads "
+                    f"{_door_word(cls)})")
+        if run.data["guest"]:
+            context_line = (f"{run.data['guest']} is "
+                            f"{run.data['context_kind']} at this "
+                            f"property")
+        else:
+            context_line = ("no arrival or stay is on record for "
+                            "this property today — verify who is "
+                            "reporting before acting")
+        summary = (
+            f"Guest lockout — {run.data['property_name']}, "
+            f"{run.data['camera']} camera, {run.date}: the guest "
+            f"reports they cannot get in. {seen[0].upper()}"
+            f"{seen[1:]}. Booking context: {context_line}. "
+            f"Nothing was sent to the guest."
+        )
+        run.data["outcome"] = "notify_operator"
+        step.result = {"summary": summary,
+                       "frame_id": frame_id,
+                       "door": cls.door if cls else "unknown",
+                       "scene": cls.scene if cls else "unclassified",
+                       **_effect(step)}
+
+
+def handle_guest_lockout_event(engine, payload: dict,
+                               play: GuestLockout | None = None) -> PlayRun:
+    """Entry point: the guest-message side reports a lockout (event
+    shape: property_id, date, optional camera, ts, frame_id).
+    Creates the run on the shared rails and delivers the event.
+    Malformed events are a caller error and raise; everything after
+    that fails safe inside the run."""
+    property_id = str(payload.get("property_id", "")).strip()
+    date = str(payload.get("date", "")).strip()
+    if not property_id or not date:
+        raise ValueError("guest_lockout event needs property_id and date")
+    run = engine.start(play or GuestLockout(), None,
+                       f"[event] guest_lockout {property_id} {date}",
+                       property_id, date)
+    engine.handle_event(run, "guest_lockout", payload)
+    return run
+
+
+# ---------------------------------------------------------------------
+# Guest feels unsafe (final-list case #49)
+# ---------------------------------------------------------------------
+
+class GuestUnsafe(Play):
+    """A guest messages that someone is outside, or knocking, or
+    that they feel unsafe. Seconds matter and the operator should
+    not have to go looking: the play assembles the property's
+    latest frames and hands them over in one urgent notification.
+    Retrieval only — the notification says what the frames' existing
+    classifications say and nothing more. If no frames are on
+    record, the notification says so plainly: the absence is itself
+    the information the operator needs."""
+
+    name = "guest_unsafe"
+    description = "A guest feels unsafe: assemble the property's " \
+                  "latest camera frames for the operator, urgently."
+
+    def __init__(self, vision=None):
+        self.vision = vision if vision is not None else FixtureVision()
+
+    def trigger(self, decision: Decision, message: str, context: dict) -> bool:
+        # Event-triggered only: the guest_unsafe event (raised when
+        # a guest message is classified upstream as an unsafe report).
+        return False
+
+    def build(self, run: PlayRun) -> list[Step]:
+        return [
+            Step("wait_guest_unsafe", "wait", event="guest_unsafe"),
+            Step("assemble_latest_frames", "internal",
+                 run=self._assemble),
+            Step("notify_operator", "action", run=self._notify,
+                 action_key="notify_operator"),
+        ]
+
+    # -- helpers -------------------------------------------------------
+    def _event(self, run: PlayRun) -> dict:
+        return run.data.get("event:guest_unsafe", {})
+
+    # -- steps ---------------------------------------------------------
+    def _assemble(self, engine, run: PlayRun, step: Step) -> None:
+        ctx = engine.context
+        prop = ctx.get_property(run.property_id)
+        if prop is None:
+            step.status = "failed"
+            step.result = {"error": "no reality data for property"}
+            run.hold_reason = "unsafe report for an unknown property"
+            return
+        stay = ctx.get_stay(run.property_id, run.date)
+        arrival = ctx.get_arrival(run.property_id, run.date)
+        records = frames_for(run.property_id, run.date)[-3:]
+        frames = []
+        for rec in reversed(records):       # newest first
+            cls = _classify_guarded(self.vision, rec["frame_id"])
+            minutes = _ts_minutes(rec["ts"])
+            frames.append({
+                "frame_id": rec["frame_id"], "camera": rec["camera"],
+                "ts": rec["ts"],
+                "when": fmt_time(minutes) if minutes is not None
+                else rec["ts"],
+                "scene": cls.scene if cls else "unclassified",
+                "note": cls.note if cls else "",
+            })
+        run.data.update({
+            "property_name": prop.name, "frames": frames,
+            "guest": (stay.guest_name if stay else
+                      arrival.guest_name if arrival else ""),
+        })
+        step.result = {
+            "property": prop.name,
+            "frames": [f["frame_id"] for f in frames],
+            "frame_count": len(frames),
+            "guest": run.data["guest"],
+        }
+
+    def _notify(self, engine, run: PlayRun, step: Step) -> None:
+        frames = run.data["frames"]
+        if frames:
+            listing = "; ".join(
+                f"{f['frame_id']} ({f['camera']}, {f['when']}): "
+                f"{f['scene'].replace('_', ' ')}"
+                + (f" — {f['note']}" if f["note"] else "")
+                for f in frames)
+            seen = f"Latest camera frames: {listing}."
+        else:
+            seen = ("No camera frames are on record for this "
+                    "property today — that absence is itself the "
+                    "information: there is nothing to check the "
+                    "report against.")
+        guest_line = (f" Guest in residence: {run.data['guest']}."
+                      if run.data["guest"] else "")
+        summary = (
+            f"URGENT — guest feels unsafe — "
+            f"{run.data['property_name']}, {run.date}: the guest "
+            f"reports someone outside or knocking.{guest_line} "
+            f"{seen} Nothing was sent to the guest; the guest is "
+            f"waiting on the operator."
+        )
+        run.data["outcome"] = "notify_operator"
+        step.result = {"summary": summary, "urgent": True,
+                       "frames": [f["frame_id"] for f in frames],
+                       "frame_count": len(frames),
+                       **_effect(step)}
+
+
+def handle_guest_unsafe_event(engine, payload: dict,
+                              play: GuestUnsafe | None = None) -> PlayRun:
+    """Entry point: a guest message was classified upstream as an
+    unsafe report (event shape: property_id, date,
+    kind="guest_unsafe"). Creates the run on the shared rails and
+    delivers the event. Malformed events are a caller error and
+    raise; everything after that fails safe inside the run."""
+    property_id = str(payload.get("property_id", "")).strip()
+    date = str(payload.get("date", "")).strip()
+    kind = str(payload.get("kind", "guest_unsafe")).strip()
+    if not property_id or not date:
+        raise ValueError("guest_unsafe event needs property_id and date")
+    if kind != "guest_unsafe":
+        raise ValueError(f"unknown unsafe-report kind: {kind}")
+    run = engine.start(play or GuestUnsafe(), None,
+                       f"[event] guest_unsafe {property_id} {date}",
+                       property_id, date)
+    engine.handle_event(run, "guest_unsafe", payload)
+    return run
+
+
+# ---------------------------------------------------------------------
+# Dark entry: the sunset check (final-list case #11)
+# ---------------------------------------------------------------------
+
+class SunsetCheck(Play):
+    """A scheduled check after sunset on an arrival day: is the
+    entry lit for the guest who is coming? The frame's lights field
+    is the read. Dark with a guest arriving notifies the operator
+    BEFORE the guest pulls up; a second consecutive dark night adds
+    the bulb change to the next turnover list. Lights on logs. No
+    arrival that day logs too — a dark entry with nobody coming is
+    a note, not a flag, and it does not touch the dark-night
+    streak. A frame that cannot settle the lights notifies: the
+    check exists so a dark entry is never assumed lit."""
+
+    name = "camera_sunset_check"
+    description = "After sunset on an arrival day, check the entry " \
+                  "frame's lights against the arriving guest."
+
+    def __init__(self, vision=None):
+        self.vision = vision if vision is not None else FixtureVision()
+
+    def trigger(self, decision: Decision, message: str, context: dict) -> bool:
+        # Event-triggered only: the scheduled sunset_check event.
+        return False
+
+    def build(self, run: PlayRun) -> list[Step]:
+        return [
+            Step("wait_sunset_check", "wait", event="sunset_check"),
+            Step("match_reality", "internal", run=self._match_reality),
+            Step("classify_entry", "internal", run=self._classify_entry),
+            Step("log_event", "action", run=self._log_event,
+                 action_key="auto_close",
+                 skip_if=lambda r: r.data.get("route") != "log"),
+            Step("notify_operator", "action", run=self._notify,
+                 action_key="notify_operator",
+                 skip_if=lambda r: r.data.get("route") != "notify"),
+        ]
+
+    # -- helpers -------------------------------------------------------
+    def _event(self, run: PlayRun) -> dict:
+        return run.data.get("event:sunset_check", {})
+
+    # -- steps ---------------------------------------------------------
+    def _match_reality(self, engine, run: PlayRun, step: Step) -> None:
+        ctx = engine.context
+        prop = ctx.get_property(run.property_id)
+        if prop is None:
+            step.status = "failed"
+            step.result = {"error": "no reality data for property"}
+            run.hold_reason = "sunset check for an unknown property"
+            return
+        arrival = ctx.get_arrival(run.property_id, run.date)
+        run.data.update({
+            "property_name": prop.name, "arrival": arrival,
+            "dark_streak_before": ctx.dark_nights(run.property_id)
+            if hasattr(ctx, "dark_nights") else 0,
+        })
+        step.result = {
+            "property": prop.name,
+            "arrival_today": arrival is not None,
+            "guest": arrival.guest_name if arrival else "",
+            "dark_streak_before": run.data["dark_streak_before"],
+        }
+
+    def _classify_entry(self, engine, run: PlayRun, step: Step) -> None:
+        ctx = engine.context
+        event = self._event(run)
+        frame_id = str(event.get("frame_id", ""))
+        cls = _classify_guarded(self.vision, frame_id) if frame_id \
+            else None
+        arrival = run.data["arrival"]
+        lights = cls.lights if cls else "unknown"
+        streak = run.data["dark_streak_before"]
+        second_night = False
+        if arrival is None:
+            route, reason = "log", ("no arrival today — a dark or "
+                                    "lit entry is noted, not flagged")
+        elif cls is None:
+            route, reason = "notify", ("the entry frame could not "
+                                       "be classified")
+        elif lights == "off":
+            if hasattr(ctx, "note_dark_night"):
+                streak = ctx.note_dark_night(run.property_id, True)
+            else:
+                streak = streak + 1
+            second_night = streak >= 2
+            route = "notify"
+            reason = ("the entry is dark after sunset with a guest "
+                      "arriving today")
+            if second_night:
+                reason += " — second night running"
+        elif lights == "on":
+            if hasattr(ctx, "note_dark_night"):
+                streak = ctx.note_dark_night(run.property_id, False)
+            else:
+                streak = 0
+            route, reason = "log", ("the entry lights are on for "
+                                    "the arriving guest")
+        else:
+            route, reason = "notify", ("the frame could not settle "
+                                       "the entry lights")
+        run.data.update({
+            "classification": cls, "route": route, "lights": lights,
+            "outcome": "logged" if route == "log" else "notify_operator",
+            "flag_reason": reason, "dark_streak": streak,
+            "second_night": second_night,
+        })
+        step.result = {
+            "frame_id": frame_id,
+            "camera": str(event.get("camera", "")),
+            "scene": cls.scene if cls else "unclassified",
+            "lights": lights,
+            "note": cls.note if cls else "",
+            "dark_streak": streak, "second_night": second_night,
+            "route": route, "reason": reason,
+        }
+
+    def _log_event(self, engine, run: PlayRun, step: Step) -> None:
+        step.result = {
+            "logged": True, "lights": run.data["lights"],
+            "reason": run.data["flag_reason"],
+            "note": "logged only — no notification, no message to anyone",
+            **_effect(step),
+        }
+
+    def _notify(self, engine, run: PlayRun, step: Step) -> None:
+        event = self._event(run)
+        arrival = run.data["arrival"]
+        frame_id = str(event.get("frame_id", ""))
+        summary = (
+            f"Dark entry — {run.data['property_name']}, "
+            f"{event.get('camera', 'exterior')} camera, {run.date}: "
+            f"entry lights read {run.data['lights']}. Flagged "
+            f"because {run.data['flag_reason']}. "
+            f"{arrival.guest_name if arrival else 'A guest'} is "
+            f"arriving today — the entry is dark before the guest "
+            f"arrives. Nothing was sent to the guest."
+        )
+        if run.data["second_night"]:
+            summary += (" Second night running — bulb change "
+                        "belongs on the next turnover list.")
+        if frame_id:
+            summary += f" Frame: {frame_id}."
+        step.result = {"summary": summary, "lights": run.data["lights"],
+                       "reason": run.data["flag_reason"],
+                       "second_night": run.data["second_night"],
+                       "dark_streak": run.data["dark_streak"],
+                       "frame_id": frame_id,
+                       **_effect(step)}
+
+
+def handle_sunset_check_event(engine, payload: dict,
+                              play: SunsetCheck | None = None) -> PlayRun:
+    """Entry point: the scheduled sunset check fired (event shape:
+    property_id, date, kind="sunset_check", camera, ts, frame_id).
+    Creates the run on the shared rails and delivers the event.
+    Malformed events are a caller error and raise; everything after
+    that fails safe inside the run."""
+    property_id = str(payload.get("property_id", "")).strip()
+    date = str(payload.get("date", "")).strip()
+    frame_id = str(payload.get("frame_id", "")).strip()
+    kind = str(payload.get("kind", "sunset_check")).strip()
+    if not property_id or not date or not frame_id:
+        raise ValueError(
+            "sunset_check event needs property_id, date and frame_id")
+    if kind != "sunset_check":
+        raise ValueError(f"unknown scheduled-check kind: {kind}")
+    run = engine.start(play or SunsetCheck(), None,
+                       f"[event] sunset_check {property_id} {date} "
+                       f"{frame_id}",
+                       property_id, date)
+    engine.handle_event(run, "sunset_check", payload)
     return run

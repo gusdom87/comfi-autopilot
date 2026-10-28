@@ -5,11 +5,16 @@ os.environ["JEV_SPEND_STATE"] = os.path.join(os.path.dirname(__file__), "spend-p
 from jev.plays import (FixtureContext, PlayEngine, STAKES,
                        default_fixture_data, get, match)
 from jev.plays.camera_check import (CameraCheck, CameraOffline,
-                                    PostTurnoverCheck,
+                                    GuestLockout, GuestUnsafe,
+                                    PostTurnoverCheck, SunsetCheck,
+                                    _reset_door_frames,
                                     handle_camera_event,
                                     handle_camera_offline_event,
                                     handle_camera_online_event,
-                                    handle_post_turnover_event)
+                                    handle_guest_lockout_event,
+                                    handle_guest_unsafe_event,
+                                    handle_post_turnover_event,
+                                    handle_sunset_check_event)
 from jev.plays.vision import FixtureVision, STAGED_FRAMES, parse_classification
 from jev.types import Category, Decision
 
@@ -456,3 +461,338 @@ def test_post_turnover_malformed_event_is_a_caller_error():
         pass
     else:
         raise AssertionError("expected ValueError for a bad kind")
+
+
+# -- final-list batch: view field + camera covered/turned (case #17) ---
+
+def test_parse_classification_view_field():
+    # Optional like door/lights: absent -> unknown, validated
+    # strictly when present. A merely unclear frame's view is
+    # "unknown" — it must never parse into blocked/shifted.
+    ok = parse_classification(
+        '{"scene": "vehicle", "people_count": null, "note": "A van.",'
+        ' "view": "blocked"}')
+    assert ok is not None and ok.view == "blocked"
+    legacy = parse_classification(
+        '{"scene": "unclear", "people_count": null, "note": "Dark."}')
+    assert legacy is not None and legacy.view == "unknown"
+    assert parse_classification(
+        '{"scene": "vehicle", "view": "tilted"}') is None
+    assert parse_classification(
+        '{"scene": "vehicle", "view": null}') is None
+
+
+def test_covered_camera_notifies_urgent_on_one_night_weekend_stay():
+    run = _event(_engine(), "f10")
+    assert run.status == "completed"
+    assert run.data["outcome"] == "notify_operator"
+    reality = _step(run, "match_reality")
+    assert reality.result["one_night_weekend"] is True
+    classify = _step(run, "classify_frame")
+    # The scene alone (nothing notable) would have logged; the
+    # blocked view outranks it.
+    assert classify.result["scene"] == "nothing_notable"
+    assert classify.result["view"] == "blocked"
+    assert classify.result["route"] == "notify"
+    notify = _step(run, "notify_operator")
+    assert notify.status == "held"
+    assert notify.result["executed"] is False
+    assert notify.result["urgent"] is True
+    assert "view reads blocked" in notify.result["summary"]
+    assert "One-night weekend stay — treat as urgent" \
+        in notify.result["summary"]
+    assert all(s.action_key != "message_guest" for s in run.steps)
+
+
+def test_shifted_camera_notifies_without_urgency_off_that_stay_shape():
+    run = _event(_engine(), "f11")
+    assert run.status == "completed"
+    assert run.data["outcome"] == "notify_operator"
+    classify = _step(run, "classify_frame")
+    assert classify.result["scene"] == "vehicle"
+    assert classify.result["view"] == "shifted"
+    assert classify.result["route"] == "notify"
+    notify = _step(run, "notify_operator")
+    assert notify.status == "held"
+    assert notify.result["urgent"] is False
+    assert "view reads shifted" in notify.result["summary"]
+
+
+def test_explicitly_normal_view_routes_on_scene_as_before():
+    vision = FixtureVision(staged={
+        "fx-view-ok": {"scene": "nothing_notable", "people_count": 0,
+                       "note": "Empty driveway.", "view": "normal"}})
+    run = _event(_engine(), "f1", play=CameraCheck(vision=vision),
+                 property_id="cedar-hollow-1n", date="2026-10-28",
+                 frame_id="fx-view-ok")
+    assert run.data["outcome"] == "logged"
+    assert _step(run, "classify_frame").result["view"] == "normal"
+    assert _step(run, "notify_operator").status == "skipped"
+
+
+# -- final-list batch: stuck at the door, dwell pattern (case #10b) ----
+
+def test_stuck_at_the_door_dwell_pattern_notifies():
+    _reset_door_frames()
+    engine = _engine()
+    first = _event(engine, "f12")
+    # One frame of a person at the shut door, arrival expected:
+    # unremarkable, logs like any expected arrival.
+    assert first.data["outcome"] == "logged"
+    assert _step(first, "classify_frame").result["route"] == "log"
+    second = _event(engine, "f13")
+    assert second.status == "completed"
+    assert second.data["outcome"] == "notify_operator"
+    classify = _step(second, "classify_frame")
+    assert classify.result["route"] == "notify"
+    assert "a person is at the door and the door reads shut" \
+        in classify.result["reason"]
+    notify = _step(second, "notify_operator")
+    assert notify.status == "held"
+    assert notify.result["executed"] is False
+    assert "a person is at the door and the door reads shut" \
+        in notify.result["summary"]
+    assert "Nothing was sent to the guest" in notify.result["summary"]
+
+
+def test_door_open_breaks_the_dwell_pattern():
+    _reset_door_frames()
+    engine = _engine()
+    _event(engine, "f12")
+    opened = _event(engine, "f14")
+    assert opened.data["outcome"] == "logged"
+    classify = _step(opened, "classify_frame")
+    assert classify.result["door"] == "open"
+    assert "stuck-at-the-door" not in classify.result["reason"]
+    assert _step(opened, "log_event").result["logged"] is True
+
+
+def test_dwell_needs_the_arrival_window():
+    _reset_door_frames()
+    vision = FixtureVision(staged={
+        "fx-dwell-a": {"scene": "unknown_person", "people_count": 1,
+                       "note": "A person at the door.",
+                       "door": "closed"},
+        "fx-dwell-b": {"scene": "unknown_person", "people_count": 1,
+                       "note": "Still at the door.", "door": "closed"},
+    })
+    engine = _engine()
+    # Owner's Unit 1N on 2026-10-28 has NO arrival: same two-frame
+    # pattern, but no arrival window, so both runs take the plain
+    # stranger route and neither claims the stuck-at-the-door read.
+    for frame_id, ts in (("fx-dwell-a", "2026-10-28T10:00:00"),
+                         ("fx-dwell-b", "2026-10-28T10:07:00")):
+        run = _event(engine, "f1", play=CameraCheck(vision=vision),
+                     property_id="cedar-hollow-1n", date="2026-10-28",
+                     camera="front-door", ts=ts, frame_id=frame_id)
+        assert run.data["outcome"] == "notify_operator"
+        reason = _step(run, "classify_frame").result["reason"]
+        assert "matches nobody expected" in reason
+        assert "stuck-at-the-door" not in reason
+
+
+# -- final-list batch: guest lockout report (case #10a) -----------------
+
+def _lockout(engine, play=None, **payload):
+    base = {"property_id": "peters-house", "date": "2026-10-28",
+            "camera": "front-door", "ts": "2026-10-28T16:20:00"}
+    base.update(payload)
+    return handle_guest_lockout_event(engine, base, play=play)
+
+
+def test_lockout_report_assembles_latest_door_frame_for_operator():
+    run = _lockout(_engine())
+    assert run.status == "completed"
+    assert run.data["outcome"] == "notify_operator"
+    assemble = _step(run, "assemble_door_frame")
+    # f18 (4:08 PM) is the latest front-door frame at or before the
+    # 4:20 PM report; the evening sunset frames are not picked.
+    assert assemble.result["frame_id"] == "f18"
+    assert assemble.result["door"] == "closed"
+    assert assemble.result["guest"] == "Marcus"
+    notify = _step(run, "notify_operator")
+    assert notify.action_key == "notify_operator"
+    assert notify.status == "held"
+    assert notify.result["executed"] is False
+    summary = notify.result["summary"]
+    assert "a person is at the door and the door reads shut" in summary
+    assert "Nothing was sent to the guest" in summary
+    # The lockout play never messages the guest either.
+    assert all(s.action_key != "message_guest" for s in run.steps)
+
+
+def test_lockout_report_door_open_reads_open():
+    run = _lockout(_engine(), property_id="cedar-hollow-2n",
+                   frame_id="f14", ts="2026-10-28T15:52:00")
+    assemble = _step(run, "assemble_door_frame")
+    assert assemble.result["frame_id"] == "f14"
+    assert assemble.result["door"] == "open"
+    summary = _step(run, "notify_operator").result["summary"]
+    assert "a person is at the door and the door reads open" in summary
+    assert "door reads shut" not in summary
+
+
+def test_lockout_unknown_property_holds_and_malformed_raises():
+    run = _lockout(_engine(), property_id="no-such-property")
+    assert run.status == "held_for_human"
+    assert _step(run, "notify_operator").status == "pending"
+    try:
+        handle_guest_lockout_event(_engine(), {"property_id": "x"})
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("expected ValueError for a malformed event")
+
+
+# -- final-list batch: guest feels unsafe (case #49) --------------------
+
+def _unsafe(engine, play=None, **payload):
+    base = {"property_id": "cedar-hollow-2n", "date": "2026-10-28",
+            "kind": "guest_unsafe"}
+    base.update(payload)
+    return handle_guest_unsafe_event(engine, base, play=play)
+
+
+def test_guest_unsafe_assembles_latest_frames_urgent():
+    run = _unsafe(_engine())
+    assert run.status == "completed"
+    assert run.data["outcome"] == "notify_operator"
+    assemble = _step(run, "assemble_latest_frames")
+    # Studio 2N's three newest frames that day, newest first.
+    assert assemble.result["frames"] == ["f16", "f14", "f13"]
+    notify = _step(run, "notify_operator")
+    assert notify.status == "held"
+    assert notify.result["executed"] is False
+    assert notify.result["urgent"] is True
+    assert notify.result["frames"] == ["f16", "f14", "f13"]
+    summary = notify.result["summary"]
+    assert summary.startswith("URGENT — guest feels unsafe")
+    assert "f16" in summary and "f13" in summary
+    assert "Nothing was sent to the guest" in summary
+    assert all(s.action_key != "message_guest" for s in run.steps)
+
+
+def test_guest_unsafe_no_frames_on_record_says_so_plainly():
+    run = _unsafe(_engine(), property_id="cedar-hollow-1n")
+    assert run.status == "completed"
+    assert run.data["outcome"] == "notify_operator"
+    assemble = _step(run, "assemble_latest_frames")
+    assert assemble.result["frames"] == []
+    notify = _step(run, "notify_operator")
+    assert notify.status == "held"
+    summary = notify.result["summary"]
+    assert "No camera frames are on record" in summary
+    assert "absence is itself the information" in summary
+
+
+def test_guest_unsafe_bad_kind_and_malformed_raise():
+    try:
+        _unsafe(_engine(), kind="guest_bored")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("expected ValueError for a bad kind")
+    try:
+        handle_guest_unsafe_event(_engine(), {"date": "2026-10-28"})
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("expected ValueError for a malformed event")
+
+
+# -- final-list batch: dark entry sunset check (case #11) ---------------
+
+def _sunset(engine, frame, play=None, **over):
+    rec = STAGED_FRAMES[frame]
+    payload = {"property_id": rec["property_id"], "date": rec["date"],
+               "kind": "sunset_check", "camera": rec["camera"],
+               "ts": rec["ts"], "frame_id": frame}
+    payload.update(over)
+    return handle_sunset_check_event(engine, payload, play=play)
+
+
+def test_sunset_dark_entry_second_night_adds_bulb_change():
+    # The fixtures seed Studio 2N with one dark night already, so
+    # this dark read is the second night running.
+    run = _sunset(_engine(), "f16")
+    assert run.status == "completed"
+    assert run.data["outcome"] == "notify_operator"
+    reality = _step(run, "match_reality")
+    assert reality.result["arrival_today"] is True
+    assert reality.result["guest"] == "Dana"
+    entry = _step(run, "classify_entry")
+    assert entry.result["lights"] == "off"
+    assert entry.result["dark_streak"] == 2
+    assert entry.result["second_night"] is True
+    notify = _step(run, "notify_operator")
+    assert notify.status == "held"
+    assert notify.result["executed"] is False
+    summary = notify.result["summary"]
+    assert "entry is dark before the guest arrives" in summary
+    assert "Second night running — bulb change belongs on the " \
+           "next turnover list" in summary
+    assert all(s.action_key != "message_guest" for s in run.steps)
+
+
+def test_sunset_dark_entry_first_night_notifies_without_bulb_line():
+    run = _sunset(_engine(), "f15")
+    assert run.data["outcome"] == "notify_operator"
+    entry = _step(run, "classify_entry")
+    assert entry.result["lights"] == "off"
+    assert entry.result["dark_streak"] == 1
+    assert entry.result["second_night"] is False
+    summary = _step(run, "notify_operator").result["summary"]
+    assert "entry is dark before the guest arrives" in summary
+    assert "bulb change" not in summary
+
+
+def test_sunset_lights_on_logs_only():
+    run = _sunset(_engine(), "f17")
+    assert run.status == "completed" and run.data["outcome"] == "logged"
+    entry = _step(run, "classify_entry")
+    assert entry.result["lights"] == "on"
+    assert entry.result["route"] == "log"
+    assert entry.result["dark_streak"] == 0
+    assert _step(run, "log_event").result["logged"] is True
+    assert _step(run, "notify_operator").status == "skipped"
+
+
+def test_sunset_no_arrival_that_day_logs_and_skips_the_streak():
+    vision = FixtureVision(staged={
+        "fx-dark-entry": {"scene": "nothing_notable", "people_count": 0,
+                          "note": "Entry dark.", "lights": "off"}})
+    engine = _engine()
+    # Owner's Unit 1N on 2026-10-28: nobody arriving, so a dark
+    # entry is noted, not flagged — and the streak is not touched.
+    run = _sunset(engine, "f15", play=SunsetCheck(vision=vision),
+                  property_id="cedar-hollow-1n", date="2026-10-28",
+                  camera="front-door", ts="2026-10-28T18:50:00",
+                  frame_id="fx-dark-entry")
+    assert run.data["outcome"] == "logged"
+    entry = _step(run, "classify_entry")
+    assert entry.result["route"] == "log"
+    assert "no arrival today" in entry.result["reason"]
+    assert _step(run, "notify_operator").status == "skipped"
+    assert engine.context.dark_nights("cedar-hollow-1n") == 0
+
+
+def test_sunset_unsettled_lights_fail_safe_to_notify():
+    vision = FixtureVision(staged={
+        "fx-dim": {"scene": "nothing_notable", "people_count": 0,
+                   "note": "A murky frame at the door."}})
+    run = _sunset(_engine(), "f15", play=SunsetCheck(vision=vision),
+                  frame_id="fx-dim")
+    assert run.data["outcome"] == "notify_operator"
+    assert _step(run, "classify_entry").result["route"] == "notify"
+    assert _step(run, "notify_operator").status == "held"
+
+
+def test_new_camera_plays_registered_but_never_message_triggered():
+    assert get("guest_lockout") is not None
+    assert get("guest_unsafe") is not None
+    assert get("camera_sunset_check") is not None
+    # Same proven-neutral message as the camera_check registration
+    # test: none of the new plays starts from a triage Decision.
+    assert match(Decision(Category.ACT, 0.9),
+                 "There are people outside, the camera went off",
+                 {}) is None
