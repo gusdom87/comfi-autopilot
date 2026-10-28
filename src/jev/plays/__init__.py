@@ -13,13 +13,16 @@ the motion play, the morning snow check, the area-outage cluster
 play the offline correlation layer forms, and the camera upkeep
 self-check, and in batch 3 the gathering accumulation and the
 move-in-signs pattern inside the motion play, plus the vendor
-proof-of-service play), and in_stay_issue (Play 4: a mid-stay problem
+proof-of-service play), in_stay_issue (Play 4: a mid-stay problem
 gets a reply, a handyman dispatch, and guest updates on the
-vendor's events) are built end to end on the shared rails; the
-remaining plays from the scope-v2 plan (guest communications is
-Play 1, the triage front door itself; special requests and review
-protection) run on these same rails and are specified in
-~/workspace/hackathon/plan-v2-autonomous-ops.md.
+vendor's events), and late_checkout (Play 5's late-checkout variant:
+the ask is checked against the next arrival and the turnover between,
+answered yes, no-with-the-latest-time, or with a question back, the
+fee held as its own step) are built end to end on the shared rails;
+the remaining plays from the scope-v2 plan (guest communications is
+Play 1, the triage front door itself; the other special-request
+types and review protection) run on these same rails and are
+specified in ~/workspace/hackathon/plan-v2-autonomous-ops.md.
 """
 from .camera_check import (CLUSTER_MIN_CAMERAS, CLUSTER_MIN_PROPERTIES,
                            CLUSTER_WINDOW_MINUTES, DOG_REASON,
@@ -51,6 +54,8 @@ from .context import (Arrival, CameraHistory, CleanReport, FixtureContext,
 from .early_checkin import EarlyCheckIn, extract_requested_minutes
 from .engine import STAKES, Play, PlayEngine, PlayRun, Step
 from .in_stay_issue import InStayIssue, classify_issue
+from .late_checkout import (LateCheckout, extract_requested_checkout,
+                            is_late_checkout_request)
 from .registry import all_plays, get, match, register
 from .vision import (ANIMAL_KINDS, CARRY_STATES, DOOR_STATES,
                      GROUND_STATES, LIGHT_STATES, VIEW_STATES,
@@ -58,6 +63,12 @@ from .vision import (ANIMAL_KINDS, CARRY_STATES, DOOR_STATES,
                      FixtureVision, LiveVision, frames_for,
                      parse_classification)
 
+# Late checkout matches first: its trigger is the narrowest (a leaving
+# verb tied to a later time, never with a check-in ask, a booking
+# extension, or an in-home problem in the message), and early
+# check-in's broad arrival cue ("arriv", "get there") would otherwise
+# claim a late-checkout ask that mentions a ride or a flight arriving.
+register(LateCheckout())
 register(EarlyCheckIn())
 register(CleanerDone())
 register(CameraCheck())
@@ -97,6 +108,8 @@ __all__ = [
     "VendorProof", "handle_vendor_window_event",
     "handle_vendor_window_closed_event",
     "InStayIssue", "classify_issue",
+    "LateCheckout", "extract_requested_checkout",
+    "is_late_checkout_request",
     "STAGED_FRAMES", "Classification", "FixtureVision", "LiveVision",
     "parse_classification", "frames_for",
     "DOOR_STATES", "LIGHT_STATES", "VIEW_STATES",

@@ -14,7 +14,7 @@ What it operates:
 - Cleaning turnovers: cleanings lined up between one guest leaving and the next arriving, with the arriving guest told the moment their place is ready.
 - Early check-in: a guest's request is checked against the same-day turnover reality; when it works, a yes reply is drafted and held for approval along with the fee step.
 - In-stay issues: problems during a stay, from a door that will not unlock to getting a handyman dispatched.
-- Special requests: handled against the same calendar and turnover reality as everything else.
+- Special requests: late checkout is built, checked against the next arrival and the turnover in between; when the ask runs into the next guest, the drafted reply offers the latest time that works, and any fee is its own held step. The other request types (supplies, a crib, parking) are designed on the same rails.
 - Exterior-camera oversight: the outside of the home is watched, so someone is looking out for the property even when the operator is not there.
 
 ## How Jev fits
@@ -31,7 +31,7 @@ The graded record so far, from the eval harness in this repo (89-message eval se
 
 Pre-existing, disclosed as background and baseline only: Jev, the decision model by TypeSafe AI; the operator's hand-labeled dataset of real guest messages; and the shadow pilot the operator ran Oct 7–14, 2026, which graded the triage decisions the eval set is built from. None of that is presented as hackathon work.
 
-Built during the hackathon, Oct 26 to Nov 4, 2026 — the Comfi Autopilot layer in this repo: the port of the pipeline to the Meta Model API (Muse Spark for fast triage, Muse Wonder for reasoning and drafts), the eval harness and confidence ledger, the graduated-autonomy ladder, the plays engine (early check-in, cleaner-done to guest-ready), the outcome metrics, the deterministic frame gate for camera stills (plain code that refuses any frame without a usable, unclipped subject before a model or a human ever sees it as evidence), and this judge sandbox.
+Built during the hackathon, Oct 26 to Nov 4, 2026 — the Comfi Autopilot layer in this repo: the port of the pipeline to the Meta Model API (Muse Spark for fast triage, Muse Wonder for reasoning and drafts), the eval harness and confidence ledger, the graduated-autonomy ladder, the plays engine (early check-in, cleaner-done to guest-ready, in-stay issues with handyman dispatch, exterior-camera checks, late checkout), the outcome metrics, the deterministic frame gate for camera stills (plain code that refuses any frame without a usable, unclipped subject before a model or a human ever sees it as evidence), and this judge sandbox.
 
 ## Run it
 

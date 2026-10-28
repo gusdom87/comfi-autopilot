@@ -164,7 +164,9 @@ class EarlyCheckIn(Play):
         turn = run.data["turnover"]
         req = fmt_time(run.data["requested_minutes"])
         prop = engine.context.get_property(run.property_id)
-        text = (f"Hi {turn.cleaner_name}, quick one on {prop.name} for "
+        # The operator's rule for cleaner texts: never the cleaner's
+        # name in the message. The name rides along for the operator.
+        text = (f"Hi, quick one on {prop.name} for "
                 f"{run.date}: the arriving guest is hoping to get in at "
                 f"{req}. No rush and no pressure - just reply done here "
                 f"the moment you finish, and I will let them know. Thanks.")

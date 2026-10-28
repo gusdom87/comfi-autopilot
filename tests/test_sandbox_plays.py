@@ -53,7 +53,9 @@ def test_play_early_checkin_conditional_charge_held_and_waits():
 
     ping = _step(out, "cleaner_ping")
     assert ping["action_key"] == "message_cleaner" and ping["status"] == "held"
-    assert "Lena" in ping["result"]["draft"]
+    # Cleaner texts never use the cleaner's name; it rides along.
+    assert "Lena" not in ping["result"]["draft"]
+    assert ping["result"]["cleaner"] == "Lena"
     assert _step(out, "wait_cleaner_done")["status"] == "waiting"
     assert "early_checkin_charge" in out["awaiting_approval"]
     # The run is in the store and fetchable by id.
@@ -373,6 +375,84 @@ def test_play_in_stay_issue_gas_safety_notifies_operator():
     assert notify["result"]["summary"].startswith("SAFETY")
     assert "Garden Unit 1A" in notify["result"]["summary"]
     assert _step(out, "dispatch_vendor")["status"] == "held"
+
+
+LC_MSG = ("Would it be possible to check out at 1pm instead of 11? Our "
+          "flight home is late afternoon.")
+
+
+def _start_lc(srv, prop):
+    engine, runs = _fresh()
+    out = srv.handle_play({"play": "late_checkout", "message": LC_MSG,
+                           "property_id": prop, "date": "2026-11-08"},
+                          engine=engine, runs=runs)
+    return out, runs
+
+
+def test_play_late_checkout_clear_day_yes_fee_held():
+    srv = _srv()
+    out, runs = _start_lc(srv, "cedar-1a")
+    assert out["play"] == "late_checkout" and out["status"] == "completed"
+    assert out["outcome"] == "grant"
+    reality = _step(out, "reality_check")["result"]
+    assert reality["same_day_arrival"] is False
+    reply = _step(out, "guest_reply")
+    assert "1:00 PM checkout works" in reply["result"]["draft"]
+    assert reply["disposition"] == "hold" and reply["status"] == "held"
+    assert reply["result"]["executed"] is False
+    charge = _step(out, "late_checkout_charge")
+    assert charge["action_key"] == "charge_guest" and charge["stake"] == "highest"
+    assert charge["required_right"] == "approve_first"
+    assert charge["disposition"] == "hold" and charge["status"] == "held"
+    assert charge["result"]["executed"] is False
+    assert charge["result"]["charge"]["amount_usd"] is None
+    assert charge["result"]["charge"]["description"] == \
+        "Late checkout fee (amount to be set)"
+    assert "$" not in json.dumps(out)
+    assert out["awaiting_approval"] == ["guest_reply", "late_checkout_charge"]
+    assert srv.handle_get_run(out["run_id"], runs=runs)["run_id"] == out["run_id"]
+
+
+def test_play_late_checkout_same_day_arrival_no_with_offer():
+    srv = _srv()
+    out, _ = _start_lc(srv, "maple-house")
+    assert out["status"] == "completed" and out["outcome"] == "deny_offer"
+    reality = _step(out, "reality_check")["result"]
+    assert reality["same_day_arrival"] is True
+    assert reality["latest_checkout"] == "12:30 PM"
+    draft = _step(out, "guest_reply")["result"]["draft"]
+    assert "1:00 PM won't work" in draft
+    assert "The latest I can do is 12:30 PM" in draft
+    assert _step(out, "guest_reply")["status"] == "held"
+    assert _step(out, "late_checkout_charge")["status"] == "skipped"
+    assert _step(out, "cleaner_heads_up")["status"] == "skipped"
+    assert out["awaiting_approval"] == ["guest_reply"]
+
+
+def test_sandbox_page_wires_the_late_checkout_buttons():
+    html = open(os.path.join(ROOT, "sandbox", "index.html")).read()
+    for button in ("lc-clear", "lc-arrival"):
+        assert f'id="{button}"' in html, button
+    assert "play: 'late_checkout'" in html
+    assert "lcFire('cedar-1a')" in html and "lcFire('maple-house')" in html
+    section = html[html.index("Play: special request → late checkout"):
+                   html.index('id="lc-timeline"')]
+    assert "$" not in section
+    # A charge with no amount renders its description, never "$null".
+    assert "r.charge.amount_usd != null" in html
+
+
+def test_play_late_checkout_off_play_message_holds():
+    srv = _srv()
+    for msg in ("", "Hi, can we check in at 1pm?"):
+        engine, runs = _fresh()
+        out = srv.handle_play({"play": "late_checkout", "message": msg,
+                               "property_id": "cedar-1a",
+                               "date": "2026-11-08"},
+                              engine=engine, runs=runs)
+        assert out["status"] == "held_for_human", msg
+        assert "not a late-checkout ask" in out["hold_reason"]
+        assert _step(out, "guest_reply")["status"] == "pending"
 
 
 def test_play_and_event_error_paths():

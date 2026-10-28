@@ -54,6 +54,9 @@ def test_conditional_pings_cleaner_and_waits(tmp_path):
     ping = _step(run, "cleaner_ping")
     assert ping.result["cleaner"] == "Lena"
     assert "reply done here" in ping.result["draft"]
+    # Cleaner texts never use the cleaner's name.
+    assert ping.result["draft"].startswith("Hi, quick one on ")
+    assert "Lena" not in ping.result["draft"]
     assert _step(run, "wait_cleaner_done").status == "waiting"
 
     engine.handle_event(run, "cleaner_done",
