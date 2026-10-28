@@ -22,6 +22,13 @@ when present they are validated just as strictly, and when absent
 they default to "unknown". Anything that does not parse to exactly
 that shape returns None, and callers treat None exactly like an
 "unclear" frame: fail safe to a human.
+
+Batch 2 of the final list adds two more optional fields on the same
+terms: "ground" (clear | snow_covered | unknown) for the snow check
+at an empty home, and "animal" (dog_sized | small | unknown) — how
+big the animal in the frame is, which is what the dog-with-no-pet
+route stakes its one notification on. Absent still means "unknown",
+and "unknown" never fires either route.
 """
 import base64
 import json
@@ -46,6 +53,8 @@ SCENES = (
 DOOR_STATES = ("open", "closed", "unknown")
 LIGHT_STATES = ("on", "off", "unknown")
 VIEW_STATES = ("normal", "blocked", "shifted", "unknown")
+GROUND_STATES = ("clear", "snow_covered", "unknown")
+ANIMAL_KINDS = ("dog_sized", "small", "unknown")
 
 VISION_SYSTEM = (
     "You classify a single still frame from an exterior camera at a "
@@ -55,7 +64,9 @@ VISION_SYSTEM = (
     '"unclear"], "people_count": integer or null, "note": one short '
     'sentence, "door": one of ["open", "closed", "unknown"], '
     '"lights": one of ["on", "off", "unknown"], '
-    '"view": one of ["normal", "blocked", "shifted", "unknown"]}. '
+    '"view": one of ["normal", "blocked", "shifted", "unknown"], '
+    '"ground": one of ["clear", "snow_covered", "unknown"], '
+    '"animal": one of ["dog_sized", "small", "unknown"]}. '
     "You cannot identify who a person is — judge only the kind of "
     "scene. Judge the door and lights state only when a door or the "
     'home\'s lights are actually visible; otherwise report "unknown" '
@@ -65,7 +76,14 @@ VISION_SYSTEM = (
     "if the camera has been turned or knocked (pointing at the "
     'ground, the sky, or a wall instead of the usual scene), '
     '"normal" when neither is the case, and "unknown" when the '
-    "frame does not let you judge. If the frame is too dark, blurry, "
+    "frame does not let you judge. Judge the ground only when the "
+    'walkway or driveway is actually visible: "snow_covered" when '
+    'snow covers it, "clear" when it is bare, "unknown" otherwise. '
+    'Judge the animal field only when an animal is visible: '
+    '"dog_sized" for an animal the size of a dog (a dog, in '
+    'practice), "small" for anything smaller (a cat, a raccoon), '
+    '"unknown" when there is no animal or its size cannot be '
+    "judged. If the frame is too dark, blurry, "
     'or obstructed to judge, the scene is "unclear".'
 )
 
@@ -88,6 +106,15 @@ class Classification:
     # the frame (or the staged record) actually settles it; a merely
     # unclear frame never counts as blocked or shifted.
     view: str = "unknown"           # one of VIEW_STATES
+    # Ground state (final-list case #32, snow at an empty home):
+    # whether the walkway/driveway in the frame reads clear or
+    # still snow-covered. "unknown" unless the frame settles it.
+    ground: str = "unknown"         # one of GROUND_STATES
+    # Animal size (final-list case #46, dog with no pet on the
+    # booking): how big the animal in the frame is. Only
+    # "dog_sized" can ever fire the dog route; a cat or a raccoon
+    # is "small" and never does. "unknown" unless settled.
+    animal: str = "unknown"         # one of ANIMAL_KINDS
 
 
 def parse_classification(text: str, source: str = "live",
@@ -116,10 +143,15 @@ def parse_classification(text: str, source: str = "live",
         view = obj.get("view", "unknown")
         if view not in VIEW_STATES:
             return None
+        ground = obj.get("ground", "unknown")
+        animal = obj.get("animal", "unknown")
+        if ground not in GROUND_STATES or animal not in ANIMAL_KINDS:
+            return None
         return Classification(scene=scene, people_count=people,
                               note=str(obj.get("note", "")),
                               source=source, cost_usd=cost_usd,
-                              door=door, lights=lights, view=view)
+                              door=door, lights=lights, view=view,
+                              ground=ground, animal=animal)
     except (ValueError, KeyError, TypeError):
         return None
 
@@ -130,7 +162,7 @@ def parse_classification(text: str, source: str = "live",
 # calendar in context.default_fixture_data (same properties/dates).
 STAGED_FRAMES: dict[str, dict] = {
     "f1": {
-        "property_id": "cedar-hollow-2n", "date": "2026-10-28",
+        "property_id": "cedar-2a", "date": "2026-10-28",
         "camera": "front-door", "ts": "2026-10-28T15:42:00",
         "description": "Two adults with rolling suitcases at the "
                        "front door, mid-afternoon on arrival day.",
@@ -139,7 +171,7 @@ STAGED_FRAMES: dict[str, dict] = {
             "note": "Two people with suitcases at the front door."},
     },
     "f2": {
-        "property_id": "cedar-hollow-2n", "date": "2026-10-28",
+        "property_id": "cedar-2a", "date": "2026-10-28",
         "camera": "front-door", "ts": "2026-10-28T11:06:00",
         "description": "One person carrying a caddy of cleaning "
                        "supplies, entering just after checkout.",
@@ -148,7 +180,7 @@ STAGED_FRAMES: dict[str, dict] = {
             "note": "One person with cleaning supplies entering."},
     },
     "f3": {
-        "property_id": "cedar-hollow-1n", "date": "2026-10-29",
+        "property_id": "cedar-1a", "date": "2026-10-29",
         "camera": "backyard", "ts": "2026-10-29T21:48:00",
         "description": "A large group gathered on the patio in the "
                        "evening, mid-stay, well beyond the booked "
@@ -158,7 +190,7 @@ STAGED_FRAMES: dict[str, dict] = {
             "note": "About eleven people gathered on the patio."},
     },
     "f4": {
-        "property_id": "peters-house", "date": "2026-10-28",
+        "property_id": "maple-house", "date": "2026-10-28",
         "camera": "driveway", "ts": "2026-10-28T23:58:00",
         "description": "Near-black frame just before midnight; motion "
                        "triggered but nothing is identifiable.",
@@ -167,7 +199,7 @@ STAGED_FRAMES: dict[str, dict] = {
             "note": "Frame too dark to identify anything."},
     },
     "f5": {
-        "property_id": "peters-house", "date": "2026-10-30",
+        "property_id": "maple-house", "date": "2026-10-30",
         "camera": "front-door", "ts": "2026-10-30T22:15:00",
         "description": "A person at the front door late in the "
                        "evening, on a date the house is closed and "
@@ -177,7 +209,7 @@ STAGED_FRAMES: dict[str, dict] = {
             "note": "One person at the front door of the closed house."},
     },
     "f6": {
-        "property_id": "peters-house", "date": "2026-10-30",
+        "property_id": "maple-house", "date": "2026-10-30",
         "camera": "front-door", "ts": "2026-10-30T10:30:00",
         "description": "A worker with cleaning supplies entering "
                        "mid-morning on the closed date, inside the "
@@ -187,7 +219,7 @@ STAGED_FRAMES: dict[str, dict] = {
             "note": "One person with cleaning supplies entering."},
     },
     "f7": {
-        "property_id": "cedar-hollow-2n", "date": "2026-10-28",
+        "property_id": "cedar-2a", "date": "2026-10-28",
         "camera": "front-door", "ts": "2026-10-28T14:15:00",
         "description": "Post-turnover check after the cleaning "
                        "window: the studio door is standing open and "
@@ -198,7 +230,7 @@ STAGED_FRAMES: dict[str, dict] = {
             "door": "open", "lights": "off"},
     },
     "f8": {
-        "property_id": "cedar-hollow-2n", "date": "2026-10-28",
+        "property_id": "cedar-2a", "date": "2026-10-28",
         "camera": "front-door", "ts": "2026-10-28T14:20:00",
         "description": "Post-turnover check after the cleaning "
                        "window: door closed, lights off, nobody "
@@ -209,7 +241,7 @@ STAGED_FRAMES: dict[str, dict] = {
             "door": "closed", "lights": "off"},
     },
     "f9": {
-        "property_id": "cedar-hollow-2n", "date": "2026-10-28",
+        "property_id": "cedar-2a", "date": "2026-10-28",
         "camera": "front-door", "ts": "2026-10-28T11:02:00",
         "description": "A person still at the front door two "
                        "minutes after the 11 AM cleaning window "
@@ -224,7 +256,7 @@ STAGED_FRAMES: dict[str, dict] = {
     # covered/shifted view reads, the stuck-at-the-door dwell pair,
     # and the sunset dark-entry checks.
     "f10": {
-        "property_id": "cedar-hollow-1n", "date": "2026-10-30",
+        "property_id": "cedar-1a", "date": "2026-10-30",
         "camera": "front-door", "ts": "2026-10-30T21:05:00",
         "description": "The frame is a flat dark blur: something is "
                        "over the lens on a Friday night, during a "
@@ -236,7 +268,7 @@ STAGED_FRAMES: dict[str, dict] = {
             "view": "blocked"},
     },
     "f11": {
-        "property_id": "cedar-hollow-2n", "date": "2026-10-28",
+        "property_id": "cedar-2a", "date": "2026-10-28",
         "camera": "front-door", "ts": "2026-10-28T12:20:00",
         "description": "The camera now points down at the steps "
                        "instead of the door and driveway; a car is "
@@ -248,7 +280,7 @@ STAGED_FRAMES: dict[str, dict] = {
             "view": "shifted"},
     },
     "f12": {
-        "property_id": "cedar-hollow-2n", "date": "2026-10-28",
+        "property_id": "cedar-2a", "date": "2026-10-28",
         "camera": "front-door", "ts": "2026-10-28T15:37:00",
         "description": "One person standing at the studio door "
                        "inside the arrival window; the door is shut.",
@@ -258,7 +290,7 @@ STAGED_FRAMES: dict[str, dict] = {
             "door": "closed"},
     },
     "f13": {
-        "property_id": "cedar-hollow-2n", "date": "2026-10-28",
+        "property_id": "cedar-2a", "date": "2026-10-28",
         "camera": "front-door", "ts": "2026-10-28T15:44:00",
         "description": "Seven minutes later the same person is "
                        "still at the studio door, and the door is "
@@ -270,7 +302,7 @@ STAGED_FRAMES: dict[str, dict] = {
             "door": "closed"},
     },
     "f14": {
-        "property_id": "cedar-hollow-2n", "date": "2026-10-28",
+        "property_id": "cedar-2a", "date": "2026-10-28",
         "camera": "front-door", "ts": "2026-10-28T15:51:00",
         "description": "Minutes later the door is open and the "
                        "guests are bringing their bags in — nobody "
@@ -281,7 +313,7 @@ STAGED_FRAMES: dict[str, dict] = {
             "door": "open"},
     },
     "f15": {
-        "property_id": "peters-house", "date": "2026-10-28",
+        "property_id": "maple-house", "date": "2026-10-28",
         "camera": "front-door", "ts": "2026-10-28T18:52:00",
         "description": "Sunset check on Marcus's arrival day: the "
                        "entry is dark, no lights on at the front of "
@@ -293,7 +325,7 @@ STAGED_FRAMES: dict[str, dict] = {
             "lights": "off"},
     },
     "f16": {
-        "property_id": "cedar-hollow-2n", "date": "2026-10-28",
+        "property_id": "cedar-2a", "date": "2026-10-28",
         "camera": "front-door", "ts": "2026-10-28T18:47:00",
         "description": "Sunset check on Dana's arrival day: the "
                        "studio entry is dark — and the fixtures "
@@ -305,7 +337,7 @@ STAGED_FRAMES: dict[str, dict] = {
             "lights": "off"},
     },
     "f17": {
-        "property_id": "peters-house", "date": "2026-10-28",
+        "property_id": "maple-house", "date": "2026-10-28",
         "camera": "front-door", "ts": "2026-10-28T18:55:00",
         "description": "Sunset check variant: the porch light is "
                        "on at the entry — the home is lit for the "
@@ -316,7 +348,7 @@ STAGED_FRAMES: dict[str, dict] = {
             "lights": "on"},
     },
     "f18": {
-        "property_id": "peters-house", "date": "2026-10-28",
+        "property_id": "maple-house", "date": "2026-10-28",
         "camera": "front-door", "ts": "2026-10-28T16:08:00",
         "description": "A person at the front door with a bag "
                        "beside them on Marcus's arrival day; the "
@@ -327,6 +359,97 @@ STAGED_FRAMES: dict[str, dict] = {
             "note": "One person at the front door, bag beside "
                     "them.",
             "door": "closed"},
+    },
+    # Final-list batch 2 (cases #46, #32): the dog arriving with
+    # the party, a lone dog-sized animal at night (which must NOT
+    # fire the dog route), and the snow-check set — snow at an
+    # empty home, snow with a guest due that day, clear ground, an
+    # unsettled frame, and snow while a stay is in progress (the
+    # morning check skips occupied homes quietly).
+    "f19": {
+        "property_id": "maple-house", "date": "2026-10-28",
+        "camera": "front-door", "ts": "2026-10-28T15:58:00",
+        "description": "Marcus's party arrives at Maple Street House "
+                       "with a dog on a leash; the booking lists "
+                       "no pet.",
+        "classification": {
+            "scene": "expected_guest", "people_count": 2,
+            "note": "Two people with bags and a dog on a leash "
+                    "at the front door.",
+            "animal": "dog_sized"},
+    },
+    "f20": {
+        "property_id": "maple-house", "date": "2026-10-28",
+        "camera": "driveway", "ts": "2026-10-28T23:41:00",
+        "description": "A dog-sized animal crosses the driveway "
+                       "alone late at night — nobody's party, no "
+                       "arrival context. The dog route must not "
+                       "fire on this frame.",
+        "classification": {
+            "scene": "animal", "people_count": None,
+            "note": "A dog-sized animal crosses the driveway "
+                    "alone.",
+            "animal": "dog_sized"},
+    },
+    "f21": {
+        "property_id": "maple-house", "date": "2026-10-29",
+        "camera": "front-door", "ts": "2026-10-29T10:30:00",
+        "description": "Morning check at Maple Street House the day "
+                       "after Marcus's stay (fixtures carry no "
+                       "stay, arrival, or turnover that day): snow "
+                       "still covers the walkway and driveway at "
+                       "mid-morning.",
+        "classification": {
+            "scene": "nothing_notable", "people_count": 0,
+            "note": "Snow still covers the walkway and the "
+                    "driveway.",
+            "ground": "snow_covered"},
+    },
+    "f22": {
+        "property_id": "cedar-2a", "date": "2026-10-28",
+        "camera": "front-door", "ts": "2026-10-28T10:15:00",
+        "description": "Morning check at Studio 2A on Dana's "
+                       "arrival day (a turnover is also on record): "
+                       "snow still covers the walkway mid-morning, "
+                       "with a guest due — the urgent variant.",
+        "classification": {
+            "scene": "nothing_notable", "people_count": 0,
+            "note": "Snow still covers the walkway.",
+            "ground": "snow_covered"},
+    },
+    "f23": {
+        "property_id": "maple-house", "date": "2026-10-29",
+        "camera": "front-door", "ts": "2026-10-29T10:35:00",
+        "description": "Morning check variant: the walkway and "
+                       "driveway at Maple Street House are bare — the "
+                       "clear read that logs quietly.",
+        "classification": {
+            "scene": "nothing_notable", "people_count": 0,
+            "note": "Walkway and driveway are bare.",
+            "ground": "clear"},
+    },
+    "f24": {
+        "property_id": "maple-house", "date": "2026-10-29",
+        "camera": "front-door", "ts": "2026-10-29T10:40:00",
+        "description": "Morning check variant: glare washes the "
+                       "frame out and the ground state cannot be "
+                       "settled — the fail-safe read that notifies.",
+        "classification": {
+            "scene": "nothing_notable", "people_count": 0,
+            "note": "Glare washes out the frame; the ground "
+                    "cannot be judged."},
+    },
+    "f25": {
+        "property_id": "cedar-1a", "date": "2026-10-29",
+        "camera": "front-door", "ts": "2026-10-29T10:20:00",
+        "description": "Morning check while Alex is mid-stay at "
+                       "Garden Unit 1A: snow covers the walkway, "
+                       "but the home is occupied — the snow check "
+                       "is for empty homes and skips this quietly.",
+        "classification": {
+            "scene": "nothing_notable", "people_count": 0,
+            "note": "Snow covers the walkway.",
+            "ground": "snow_covered"},
     },
 }
 
@@ -374,7 +497,9 @@ class FixtureVision:
                               source="fixture",
                               door=rec.get("door", "unknown"),
                               lights=rec.get("lights", "unknown"),
-                              view=rec.get("view", "unknown"))
+                              view=rec.get("view", "unknown"),
+                              ground=rec.get("ground", "unknown"),
+                              animal=rec.get("animal", "unknown"))
 
 
 class LiveVision:

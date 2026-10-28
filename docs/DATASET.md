@@ -21,7 +21,14 @@ fine-grained category maps onto this build's three-way vocabulary:
 - Confirm: booking_inquiry, house_rules_question, owner_or_personal
 Resulting label spread: Confirm 33, Act 31, Ignore 25.
 
-Known limits: n=89 is small; labels inherit the pilot's category definitions;
+Update Oct 27, 2026: the operator re-labeled all 18 held-out rows with his
+own Confirm / Act / Ignore calls. Those rows now carry ground truth from
+the regrade (marked human_verdict=relabeled in the dataset file), bringing
+the scored set to n=107: Confirm 39, Act 32, Ignore 36. The numbers in the
+README are from the 89-row set (n=83 scored); the 107-row set has not been
+re-run yet.
+
+Known limits: n=89 (now 107) is small; labels inherit the pilot's category definitions;
 message previews are truncated by the source system. Every reported number
 carries its n, and the confidence ledger treats this set as a floor, not a
 ceiling: live decisions during the event add fresh labeled rows daily.

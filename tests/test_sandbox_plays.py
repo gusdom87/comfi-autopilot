@@ -33,7 +33,7 @@ EC_MSG = ("Hi! Our flight lands early - could we check in at 1pm "
 def _start_ec(srv):
     engine, runs = _fresh()
     out = srv.handle_play({"play": "early_checkin", "message": EC_MSG,
-                           "property_id": "cedar-hollow-2n",
+                           "property_id": "cedar-2a",
                            "date": "2026-10-28"}, engine=engine, runs=runs)
     return srv, engine, runs, out
 
@@ -53,7 +53,7 @@ def test_play_early_checkin_conditional_charge_held_and_waits():
 
     ping = _step(out, "cleaner_ping")
     assert ping["action_key"] == "message_cleaner" and ping["status"] == "held"
-    assert "Cristina" in ping["result"]["draft"]
+    assert "Lena" in ping["result"]["draft"]
     assert _step(out, "wait_cleaner_done")["status"] == "waiting"
     assert "early_checkin_charge" in out["awaiting_approval"]
     # The run is in the store and fetchable by id.
@@ -63,7 +63,7 @@ def test_play_early_checkin_conditional_charge_held_and_waits():
 def test_event_cleaner_done_completes_the_chain():
     srv, engine, runs, out = _start_ec(_srv())
     done = srv.handle_event({"run_id": out["run_id"], "event": "cleaner_done",
-                             "payload": {"cleaner_id": "cleaner-cristina",
+                             "payload": {"cleaner_id": "cleaner-lena",
                                          "finished_at": "1:32 PM"}},
                             engine=engine, runs=runs)
     assert done["status"] == "completed"
@@ -78,8 +78,8 @@ def test_play_cleaner_done_happy_path_send_held():
     srv = _srv()
     engine, runs = _fresh()
     out = srv.handle_play({"play": "cleaner_done",
-                           "property_id": "cedar-hollow-2n", "date": "2026-10-28",
-                           "cleaner_id": "cleaner-cristina",
+                           "property_id": "cedar-2a", "date": "2026-10-28",
+                           "cleaner_id": "cleaner-lena",
                            "finished_at": "1:32 PM"},
                           engine=engine, runs=runs)
     assert out["status"] == "completed" and out["outcome"] == "ready"
@@ -93,8 +93,8 @@ def test_play_cleaner_done_problem_flag_holds_and_sends_nothing():
     srv = _srv()
     engine, runs = _fresh()
     out = srv.handle_play({"play": "cleaner_done",
-                           "property_id": "peters-house", "date": "2026-10-28",
-                           "cleaner_id": "cleaner-jader",
+                           "property_id": "maple-house", "date": "2026-10-28",
+                           "cleaner_id": "cleaner-tomas",
                            "finished_at": "3:05 PM"},
                           engine=engine, runs=runs)
     assert out["status"] == "held_for_human"
@@ -107,7 +107,7 @@ def test_play_camera_check_gathering_notifies_operator_held():
     srv = _srv()
     engine, runs = _fresh()
     out = srv.handle_play({"play": "camera_check",
-                           "property_id": "cedar-hollow-1n", "date": "2026-10-29",
+                           "property_id": "cedar-1a", "date": "2026-10-29",
                            "camera": "backyard", "ts": "2026-10-29T21:48:00",
                            "frame_id": "f3"},
                           engine=engine, runs=runs)
@@ -130,7 +130,7 @@ def test_play_camera_check_expected_guest_logs_only():
     srv = _srv()
     engine, runs = _fresh()
     out = srv.handle_play({"play": "camera_check",
-                           "property_id": "cedar-hollow-2n", "date": "2026-10-28",
+                           "property_id": "cedar-2a", "date": "2026-10-28",
                            "camera": "front-door", "ts": "2026-10-28T15:42:00",
                            "frame_id": "f1"},
                           engine=engine, runs=runs)
@@ -144,7 +144,7 @@ def test_play_camera_offline_switch_message_held_with_wording():
     srv = _srv()
     engine, runs = _fresh()
     out = srv.handle_play({"play": "camera_offline",
-                           "property_id": "cedar-hollow-1n",
+                           "property_id": "cedar-1a",
                            "date": "2026-10-29", "camera": "front-door",
                            "ts": "2026-10-29T19:20:00",
                            "mention": "lights_and_camera"},
@@ -176,7 +176,7 @@ def test_play_camera_check_vacant_mode_notifies_with_still():
     srv = _srv()
     engine, runs = _fresh()
     out = srv.handle_play({"play": "camera_check",
-                           "property_id": "peters-house",
+                           "property_id": "maple-house",
                            "date": "2026-10-30", "camera": "front-door",
                            "ts": "2026-10-30T22:15:00", "frame_id": "f5"},
                           engine=engine, runs=runs)
@@ -193,7 +193,7 @@ def test_play_camera_covered_view_blocked_urgent():
     srv = _srv()
     engine, runs = _fresh()
     out = srv.handle_play({"play": "camera_check",
-                           "property_id": "cedar-hollow-1n",
+                           "property_id": "cedar-1a",
                            "date": "2026-10-30", "camera": "front-door",
                            "ts": "2026-10-30T21:05:00", "frame_id": "f10"},
                           engine=engine, runs=runs)
@@ -213,7 +213,7 @@ def test_play_guest_lockout_notifies_operator_held():
     srv = _srv()
     engine, runs = _fresh()
     out = srv.handle_play({"play": "guest_lockout",
-                           "property_id": "cedar-hollow-2n",
+                           "property_id": "cedar-2a",
                            "date": "2026-10-28", "camera": "front-door",
                            "ts": "2026-10-28T15:52:00", "frame_id": "f13"},
                           engine=engine, runs=runs)
@@ -237,7 +237,7 @@ def test_play_guest_unsafe_assembles_latest_frames_urgent():
     srv = _srv()
     engine, runs = _fresh()
     out = srv.handle_play({"play": "guest_unsafe",
-                           "property_id": "cedar-hollow-2n",
+                           "property_id": "cedar-2a",
                            "date": "2026-10-28", "kind": "guest_unsafe"},
                           engine=engine, runs=runs)
     assert out["play"] == "guest_unsafe"
@@ -256,7 +256,7 @@ def test_play_sunset_check_second_night_bulb_line():
     srv = _srv()
     engine, runs = _fresh()
     out = srv.handle_play({"play": "camera_sunset_check",
-                           "property_id": "cedar-hollow-2n",
+                           "property_id": "cedar-2a",
                            "date": "2026-10-28", "kind": "sunset_check",
                            "camera": "front-door",
                            "ts": "2026-10-28T18:47:00", "frame_id": "f16"},
@@ -278,7 +278,7 @@ def test_play_camera_post_turnover_door_open_notifies():
     srv = _srv()
     engine, runs = _fresh()
     out = srv.handle_play({"play": "camera_post_turnover",
-                           "property_id": "cedar-hollow-2n",
+                           "property_id": "cedar-2a",
                            "date": "2026-10-28", "kind": "post_turnover",
                            "camera": "front-door",
                            "ts": "2026-10-28T14:15:00", "frame_id": "f7"},
@@ -300,7 +300,7 @@ def test_play_in_stay_issue_dispatch_held_and_event_flow():
     srv = _srv()
     engine, runs = _fresh()
     out = srv.handle_play({"play": "in_stay_issue", "message": IH_LEAK,
-                           "property_id": "cedar-hollow-1n",
+                           "property_id": "cedar-1a",
                            "date": "2026-10-29"}, engine=engine, runs=runs)
     assert out["play"] == "in_stay_issue" and out["status"] == "waiting"
     assert out["outcome"] == "leak"
@@ -342,7 +342,7 @@ def test_play_in_stay_issue_gas_safety_notifies_operator():
     srv = _srv()
     engine, runs = _fresh()
     out = srv.handle_play({"play": "in_stay_issue", "message": IH_GAS,
-                           "property_id": "cedar-hollow-1n",
+                           "property_id": "cedar-1a",
                            "date": "2026-10-29"}, engine=engine, runs=runs)
     assert out["outcome"] == "safety_gas_smell"
     reply = _step(out, "guest_reply")
@@ -353,7 +353,7 @@ def test_play_in_stay_issue_gas_safety_notifies_operator():
     assert notify["disposition"] == "hold" and notify["status"] == "held"
     assert notify["result"]["executed"] is False
     assert notify["result"]["summary"].startswith("SAFETY")
-    assert "Owner's Unit 1N" in notify["result"]["summary"]
+    assert "Garden Unit 1A" in notify["result"]["summary"]
     assert _step(out, "dispatch_vendor")["status"] == "held"
 
 
@@ -390,7 +390,7 @@ def test_http_endpoints_round_trip():
 
         status, body = req("POST", "/play", {"play": "early_checkin",
                                              "message": EC_MSG,
-                                             "property_id": "cedar-hollow-2n",
+                                             "property_id": "cedar-2a",
                                              "date": "2026-10-28"})
         run = json.loads(body)
         assert status == 200 and run["status"] == "waiting"
@@ -404,3 +404,108 @@ def test_http_endpoints_round_trip():
         assert status == 200 and json.loads(body)["run_id"] == run["run_id"]
     finally:
         httpd.shutdown()
+
+
+# ---------------------------------------------------------------------
+# Play 7 batch 2: dog, snow, outage cluster, upkeep (sandbox layer)
+# ---------------------------------------------------------------------
+
+def test_sandbox_dog_arrival_flags_operator():
+    srv = _srv()
+    engine, runs = _fresh()
+    out = srv.handle_play({
+        "play": "camera_check", "property_id": "maple-house",
+        "date": "2026-10-28", "camera": "front-door",
+        "ts": "2026-10-28T15:58:00", "frame_id": "f19"},
+        engine=engine, runs=runs)
+    assert not out.get("error")
+    assert out["outcome"] == "notify_operator"
+    notify = _step(out, "notify_operator")
+    assert "a dog-sized animal was seen arriving with the party" \
+        in notify["result"]["summary"]
+
+
+def test_sandbox_morning_check_snow_at_empty_home():
+    srv = _srv()
+    engine, runs = _fresh()
+    out = srv.handle_play({
+        "play": "camera_morning_check", "property_id": "maple-house",
+        "date": "2026-10-29", "kind": "morning_check",
+        "camera": "front-door", "ts": "2026-10-29T10:30:00",
+        "frame_id": "f21"}, engine=engine, runs=runs)
+    assert not out.get("error")
+    assert out["play"] == "camera_morning_check"
+    assert out["outcome"] == "notify_operator"
+    assert _step(out, "classify_ground")["result"]["ground"] \
+        == "snow_covered"
+
+
+def test_sandbox_outage_cluster_burst():
+    from jev.plays.camera_check import _reset_outage_correlator
+    _reset_outage_correlator()
+    srv = _srv()
+    engine, runs = _fresh()
+    out = srv.handle_play({
+        "play": "camera_outage_cluster", "events": [
+            {"property_id": "cedar-1a", "date": "2026-10-29",
+             "camera": "front-door", "ts": "2026-10-29T19:20:00",
+             "mention": "lights_and_camera"},
+            {"property_id": "cedar-2a", "date": "2026-10-29",
+             "camera": "front-door", "ts": "2026-10-29T19:26:00"},
+            {"property_id": "cedar-1a", "date": "2026-10-29",
+             "camera": "backyard", "ts": "2026-10-29T19:31:00"}]},
+        engine=engine, runs=runs)
+    assert not out.get("error")
+    assert out["cluster"] is not None
+    assert out["cluster"]["cameras"] == 3
+    cluster_run = out["cluster_run"]
+    assert cluster_run is not None
+    assert cluster_run["outcome"] == "area_outage_notified"
+    for run_dict in out["runs"]:
+        names = [s["name"] for s in run_dict["steps"]]
+        assert "outage_cluster" in names
+
+
+def test_sandbox_outage_second_click_joins_announced_cluster():
+    # The demo button clicked twice on the shared engine: the second
+    # burst raises no new cluster run, and its runs carry the
+    # outage_cluster mark the page reads to say so (instead of
+    # "below the correlation threshold").
+    from jev.plays.camera_check import _reset_outage_correlator
+    _reset_outage_correlator()
+    srv = _srv()
+    engine, runs = _fresh()
+    payload = {
+        "play": "camera_outage_cluster", "events": [
+            {"property_id": "cedar-1a", "date": "2026-10-29",
+             "camera": "front-door", "ts": "2026-10-29T19:20:00",
+             "mention": "lights_and_camera"},
+            {"property_id": "cedar-2a", "date": "2026-10-29",
+             "camera": "front-door", "ts": "2026-10-29T19:26:00"},
+            {"property_id": "cedar-1a", "date": "2026-10-29",
+             "camera": "backyard", "ts": "2026-10-29T19:31:00"}]}
+    first = srv.handle_play(payload, engine=engine, runs=runs)
+    assert len(first["cluster_runs"]) == 1
+    assert first["cluster_runs"][0]["run_id"] in runs
+    cid = first["cluster"]["cluster_id"]
+    second = srv.handle_play(payload, engine=engine, runs=runs)
+    assert not second.get("error")
+    assert second["cluster_run"] is None and second["cluster_runs"] == []
+    for run_dict in second["runs"]:
+        assert _step(run_dict, "outage_cluster")["result"]["cluster_id"] == cid
+    html = open(os.path.join(ROOT, "sandbox", "index.html")).read()
+    assert "joined the already-announced cluster" in html
+    assert "no second notification was raised" in html
+
+
+def test_sandbox_upkeep_report():
+    srv = _srv()
+    engine, runs = _fresh()
+    out = srv.handle_play({
+        "play": "camera_upkeep", "date": "2026-10-28",
+        "kind": "camera_upkeep"}, engine=engine, runs=runs)
+    assert not out.get("error")
+    assert out["play"] == "camera_upkeep"
+    assert out["outcome"] == "upkeep_report"
+    build = _step(out, "build_report")
+    assert len(build["result"]["notes"]) == 3

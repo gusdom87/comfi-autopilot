@@ -3,3 +3,7 @@ __pycache__/
 *.pyc
 data/
 .decision-log/
+eval/runs/*/cache/
+eval/runs/*/spend.json
+tests/spend-plays-test.json
+tests/spend-test.json

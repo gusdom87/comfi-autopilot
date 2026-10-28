@@ -9,10 +9,16 @@ Ladder:
                             high-confidence accuracy >= 0.98
 Ignore-category items never send anything, so their right is about
 auto-closing, gated by the same thresholds.
+
+Per-decision floor: a right earned on aggregate stats never covers a
+single decision below HIGH_CONF (the eval's high-confidence band).
+Pass the decision's confidence and anything under the floor is P1,
+whatever the ledger says.
 """
 import json
 
 P1, P2, P3 = "approve_first", "send_with_log", "send_with_spotcheck"
+HIGH_CONF = 0.85    # same band as eval/scoring.py HIGH_CONF
 
 
 def load_ledger(path: str | None) -> dict:
@@ -25,7 +31,10 @@ def load_ledger(path: str | None) -> dict:
         return {}
 
 
-def right_for(category: str, ledger: dict) -> str:
+def right_for(category: str, ledger: dict,
+              confidence: float | None = None) -> str:
+    if confidence is not None and confidence < HIGH_CONF:
+        return P1
     stats = (ledger or {}).get("categories", {}).get(category, {})
     n = int(stats.get("decisive_n", 0))
     acc = float(stats.get("decisive_accuracy", 0.0))

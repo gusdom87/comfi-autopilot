@@ -36,7 +36,7 @@ def test_gate_holds_charge_by_default_and_logs_it(tmp_path):
     log = str(tmp_path / "runs.jsonl")
     run = _engine(log_path=log).start(
         get("early_checkin"), Decision(Category.ACT, 0.9),
-        "Can we check in at 1pm?", "cedar-hollow-1n", "2026-10-28")
+        "Can we check in at 1pm?", "cedar-1a", "2026-10-28")
     charge = next(s for s in run.steps if s.name == "early_checkin_charge")
     assert charge.required_right == "approve_first"
     assert charge.disposition == "hold" and charge.status == "held"
@@ -58,12 +58,27 @@ def test_earned_right_executes_charge_simulated():
         "high_conf_accuracy": 0.99}}}
     run = _engine(ledger=ledger).start(
         get("early_checkin"), Decision(Category.ACT, 0.9),
-        "Can we check in at 1pm?", "cedar-hollow-1n", "2026-10-28")
+        "Can we check in at 1pm?", "cedar-1a", "2026-10-28")
     charge = next(s for s in run.steps if s.name == "early_checkin_charge")
     assert charge.required_right == "send_with_spotcheck"
     assert charge.disposition == "execute" and charge.status == "done"
     assert charge.result["executed"] is True
     assert charge.result["channel"] == "simulated"
+
+
+def test_low_confidence_decision_holds_despite_earned_right():
+    # The right is earned on aggregate stats; this one decision sits
+    # below the per-decision floor, so the gate holds it anyway.
+    ledger = {"categories": {"charge_guest": {
+        "decisive_n": 80, "decisive_accuracy": 0.98,
+        "high_conf_accuracy": 0.99}}}
+    run = _engine(ledger=ledger).start(
+        get("early_checkin"), Decision(Category.ACT, 0.6),
+        "Can we check in at 1pm?", "cedar-1a", "2026-10-28")
+    charge = next(s for s in run.steps if s.name == "early_checkin_charge")
+    assert charge.required_right == "approve_first"
+    assert charge.disposition == "hold" and charge.status == "held"
+    assert charge.result["executed"] is False
 
 
 def test_unknown_property_fails_safe_to_human():
@@ -92,9 +107,9 @@ def test_time_math():
     assert to_minutes("16:00") == 960
     ctx = FixtureContext(default_fixture_data())
     # 11:00 checkout + 150 min clean + 30 buffer = 2:00 PM
-    assert ctx.ready_time_minutes("cedar-hollow-2n", "2026-10-28") == 840
+    assert ctx.ready_time_minutes("cedar-2a", "2026-10-28") == 840
     # No turnover: default ready noon
-    assert ctx.ready_time_minutes("cedar-hollow-1n", "2026-10-28") == 720
+    assert ctx.ready_time_minutes("cedar-1a", "2026-10-28") == 720
     assert ctx.ready_time_minutes("ghost", "2026-10-28") is None
 
 
@@ -119,10 +134,10 @@ def test_triage_decision_fires_play_end_to_end_offline():
                           "route": "host", "reason": "arrival today"})
     client = _FakeClient([verdict, "draft not used by the play"])
     d = decide("escalate", "Can we check in at 1pm today?",
-               {"property": "cedar-hollow-1n"}, client=client)
+               {"property": "cedar-1a"}, client=client)
     assert d.category is Category.ACT
     play = match(d, "Can we check in at 1pm today?", {})
     assert play is not None
     run = _engine().start(play, d, "Can we check in at 1pm today?",
-                          "cedar-hollow-1n", "2026-10-28")
+                          "cedar-1a", "2026-10-28")
     assert run.status == "completed" and run.data["outcome"] == "grant"

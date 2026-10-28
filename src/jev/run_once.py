@@ -32,7 +32,8 @@ def main() -> int:
         "reason": decision.reason,
         "tier_path": decision.tier_path,
         "cost_usd": round(decision.cost_usd, 6),
-        "autonomy_right": right_for(decision.category.value, ledger),
+        "autonomy_right": right_for(decision.category.value, ledger,
+                                    decision.confidence),
         "policy": args.policy,
     }
     append_decision(args.log, record)

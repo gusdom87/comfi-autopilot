@@ -21,7 +21,7 @@ def main() -> int:
         print("No META_MODEL_API_KEY in env. Stop: the key comes through the Secure Vault flow.")
         return 2
     client = MetaModelClient(config)
-    user = build_triage_user(STAGED, {"property": "Cedar Hollow Studio 2N"}, [])
+    user = build_triage_user(STAGED, {"property": "Cedar Hollow Studio 2A"}, [])
     for model in (config.tier_fast, config.tier_deep):
         start = time.time()
         resp = client.complete(model, TRIAGE_SYSTEM, user)

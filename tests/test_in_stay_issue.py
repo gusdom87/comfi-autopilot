@@ -6,8 +6,8 @@ from jev.plays import FixtureContext, PlayEngine, default_fixture_data, get, mat
 from jev.plays.in_stay_issue import InStayIssue, classify_issue
 from jev.types import Category, Decision
 
-# Alex is mid-stay at cedar-hollow-1n on 2026-10-29 (fixture stay record).
-PROP, DATE = "cedar-hollow-1n", "2026-10-29"
+# Alex is mid-stay at cedar-1a on 2026-10-29 (fixture stay record).
+PROP, DATE = "cedar-1a", "2026-10-29"
 LEAK_MSG = ("Hi, there's water leaking under the kitchen sink - it's "
             "dripping steadily and the cabinet floor is wet.")
 GAS_MSG = "Hi, I smell gas near the stove, kind of strong. Should I be worried?"
@@ -99,7 +99,7 @@ def test_happy_path_dispatch_held_at_p1(tmp_path):
     assert dispatch.result["executed"] is False
     assert dispatch.result["held_for_approval"] is True
     draft = dispatch.result["draft"]
-    assert "Owner's Unit 1N" in draft and "leak" in draft
+    assert "Garden Unit 1A" in draft and "leak" in draft
     assert "Water shutoff" in dispatch.result["access_notes"]
     assert "ETA" in draft
     assert "guest_reply" in run.held_steps
@@ -147,7 +147,7 @@ def test_safety_branch_notifies_operator_and_skips_self_help():
     assert notify.result["executed"] is False
     summary = notify.result["summary"]
     assert summary.startswith("SAFETY")
-    assert "Owner's Unit 1N" in summary and "gas smell" in summary
+    assert "Garden Unit 1A" in summary and "gas smell" in summary
     assert "notify_operator" in run.held_steps
 
     dispatch = _step(run, "dispatch_vendor")
@@ -195,9 +195,9 @@ def test_non_issue_act_does_not_trigger():
 
 
 def test_no_stay_in_progress_holds_for_human():
-    # cedar-hollow-2n on 2026-10-28 has an ARRIVAL (Dana) but no stay in
+    # cedar-2a on 2026-10-28 has an ARRIVAL (Dana) but no stay in
     # progress - nobody is in residence to dispatch help to yet.
-    run = _start(_engine(), prop="cedar-hollow-2n", date="2026-10-28")
+    run = _start(_engine(), prop="cedar-2a", date="2026-10-28")
     assert run.status == "held_for_human"
     assert "stay" in run.hold_reason
     reality = _step(run, "reality_check")

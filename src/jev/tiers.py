@@ -6,6 +6,7 @@
 Every path fails safe: no usable model output -> FAIL_SAFE (Confirm).
 """
 import os
+from dataclasses import replace
 
 from .client import MetaModelClient
 from .config import Config
@@ -80,8 +81,12 @@ def decide(policy: str, message: str, context: dict, client=None, examples=None)
             return _draft(client, guard, config.tier_fast, d, message, context, spent)
         d2, spent2 = _call(client, guard, config.tier_deep, TRIAGE_SYSTEM, user)
         if d2 is None:
-            d.tier_path = config.tier_fast + " (escalation failed; fast verdict kept)"
-            return d
+            # The fast verdict was already judged too uncertain to stand
+            # alone, so it is not handed back as the decision: fail safe,
+            # keeping the honest tier path and what the fast call cost.
+            return replace(FAIL_SAFE,
+                           tier_path=config.tier_fast + " (escalation failed; fail-safe)",
+                           cost_usd=spent)
         d2.tier_path = config.tier_fast + " -> " + config.tier_deep
         d2.cost_usd = spent + spent2
         return _draft(client, guard, config.tier_deep, d2, message, context, spent + spent2)
