@@ -140,6 +140,72 @@ def test_play_camera_check_expected_guest_logs_only():
     assert _step(out, "notify_operator")["status"] == "skipped"
 
 
+def test_play_camera_offline_switch_message_held_with_wording():
+    srv = _srv()
+    engine, runs = _fresh()
+    out = srv.handle_play({"play": "camera_offline",
+                           "property_id": "cedar-hollow-1n",
+                           "date": "2026-10-29", "camera": "front-door",
+                           "ts": "2026-10-29T19:20:00",
+                           "mention": "lights_and_camera"},
+                          engine=engine, runs=runs)
+    assert out["play"] == "camera_offline"
+    assert out["status"] == "completed"
+    assert out["outcome"] == "switch_message_held"
+    reality = _step(out, "check_reality")
+    assert reality["result"]["switch_fed"] is True
+    assert reality["result"]["mention"] == "lights_and_camera"
+    msg = _step(out, "guest_switch_message")
+    assert msg["action_key"] == "message_guest"
+    assert msg["disposition"] == "hold" and msg["status"] == "held"
+    assert msg["result"]["executed"] is False
+    assert "outside camera" in msg["result"]["draft"]
+    assert srv.handle_get_run(out["run_id"], runs=runs)["run_id"] \
+        == out["run_id"]
+
+    # The camera comes back before the held message ever executes:
+    # the run closes as resolved through the event endpoint.
+    back = srv.handle_event({"run_id": out["run_id"],
+                             "event": "camera_online",
+                             "payload": {"camera": "front-door"}},
+                            engine=engine, runs=runs)
+    assert back["outcome"] == "resolved_camera_back"
+
+
+def test_play_camera_check_vacant_mode_notifies_with_still():
+    srv = _srv()
+    engine, runs = _fresh()
+    out = srv.handle_play({"play": "camera_check",
+                           "property_id": "peters-house",
+                           "date": "2026-10-30", "camera": "front-door",
+                           "ts": "2026-10-30T22:15:00", "frame_id": "f5"},
+                          engine=engine, runs=runs)
+    assert out["status"] == "completed" and out["outcome"] == "notify_operator"
+    assert _step(out, "match_reality")["result"]["vacant"] is True
+    notify = _step(out, "notify_operator")
+    assert notify["status"] == "held"
+    assert notify["result"]["executed"] is False
+    assert "frame f5" in notify["result"]["summary"]
+    assert "attached in the simulated" in notify["result"]["summary"]
+
+
+def test_play_camera_post_turnover_door_open_notifies():
+    srv = _srv()
+    engine, runs = _fresh()
+    out = srv.handle_play({"play": "camera_post_turnover",
+                           "property_id": "cedar-hollow-2n",
+                           "date": "2026-10-28", "kind": "post_turnover",
+                           "camera": "front-door",
+                           "ts": "2026-10-28T14:15:00", "frame_id": "f7"},
+                          engine=engine, runs=runs)
+    assert out["play"] == "camera_post_turnover"
+    assert out["outcome"] == "notify_operator"
+    state = _step(out, "classify_state")
+    assert state["result"]["door"] == "open"
+    assert state["result"]["lights"] == "off"
+    assert _step(out, "notify_operator")["status"] == "held"
+
+
 IH_LEAK = ("Hi, there's water leaking under the kitchen sink - it's "
            "dripping steadily and the cabinet floor is wet.")
 IH_GAS = "Hi, I smell gas near the stove, kind of strong. Should I be worried?"

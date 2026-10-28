@@ -46,6 +46,16 @@ Endpoints:
                check-in; the play extracts the issue itself):
                {"play": "in_stay_issue", "message": "...",
                 "property_id": "cedar-hollow-1n", "date": "2026-10-29"}
+               Body for camera offline (the switch play; mention is
+               the wording variant, lights_and_camera | lights_only):
+               {"play": "camera_offline", "property_id": "cedar-hollow-1n",
+                "date": "2026-10-29", "camera": "front-door",
+                "mention": "lights_and_camera"}
+               Body for the post-turnover state check:
+               {"play": "camera_post_turnover",
+                "property_id": "cedar-hollow-2n", "date": "2026-10-28",
+                "kind": "post_turnover", "camera": "front-door",
+                "ts": "2026-10-28T14:15:00", "frame_id": "f7"}
   POST /event  deliver an event to a waiting run:
                {"run_id": "...", "event": "cleaner_done",
                 "payload": {"finished_at": "1:32 PM"}}
@@ -54,6 +64,10 @@ Endpoints:
                 "payload": {"eta": "3:30 PM"}} and then
                {"run_id": "...", "event": "vendor_done",
                 "payload": {"finished_at": "4:05 PM"}}
+               A camera_offline run resolves if the camera returns
+               before its held step ever executes:
+               {"run_id": "...", "event": "camera_online",
+                "payload": {"camera": "front-door"}}
   GET  /run/<id>   the run's current state (same JSON /play returns).
 
 Driving it on the page:
@@ -78,12 +92,36 @@ Driving it on the page:
   gathering, Owner's Unit 1N" uses frame f3: eleven people on the
   patio against a booked party of four mid-stay, so the run flags
   the OPERATOR — the notification is held at the notify_operator
-  gate with its summary preserved. This play never messages a
-  guest. Frames are staged metadata (jev.plays.vision.STAGED_FRAMES),
+  gate with its summary preserved. The motion play never messages
+  a guest. Frames are staged metadata (jev.plays.vision.STAGED_FRAMES),
   classified by the fixture vision implementation; the live vision
   path was verified against the real API on 2026-10-27 (see
   vision.py for the confirmed request shape) but the sandbox never
   uses it.
+- Camera offline (the switch play): "Camera offline — switch
+  flipped during a stay" runs the offline extension at Owner's
+  Unit 1N, where Alex is mid-stay and the front-door camera is on
+  the staged switch-fed list: the run drafts the camera system's
+  one guest message — flip the switch by the front door back on,
+  with the lights_and_camera wording shown in the step — and the
+  send is HELD at the message_guest gate. With no stay in progress,
+  or a camera that is not switch-fed, the same event drafts no
+  guest message at all and flags the operator instead; and if the
+  camera comes back before the held message executes, the run
+  closes as resolved (POST /event, camera_online).
+- Vacant mode: "Camera motion — person at the closed house" uses
+  frame f5 at Peter's House on 2026-10-30, a date the fixtures
+  mark closed: any person notifies the operator, and the summary
+  carries the frame reference with the still attached in the
+  simulated channel. A worker inside a scheduled work window on
+  that date (frame f6, via the API) still logs quietly.
+- Post-turnover state check: "Post-turnover check — door open"
+  uses frame f7: the classification's door/lights fields (an
+  optional, strictly validated extension of the vision schema)
+  show the door open at an emptied home, so the operator is
+  flagged. "All secured" (frame f8: door closed, lights off)
+  logs only. A frame that cannot settle the state flags the
+  operator too.
 - In-stay issue: "Guest reports a leak — Owner's Unit 1N" runs
   Play 4 against the mid-stay fixture (Alex, in residence
   2026-10-29): the issue is extracted, the stay and the fixture

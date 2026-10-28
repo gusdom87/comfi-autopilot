@@ -13,7 +13,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from jev.autonomy import load_ledger, right_for  # noqa: E402
 from jev.plays import FixtureContext, PlayEngine, default_fixture_data  # noqa: E402
 from jev.plays import get as get_play  # noqa: E402
-from jev.plays.camera_check import handle_camera_event  # noqa: E402
+from jev.plays.camera_check import (  # noqa: E402
+    handle_camera_event, handle_camera_offline_event,
+    handle_camera_online_event, handle_post_turnover_event)
 from jev.plays.cleaner_done import handle_cleaner_done_event  # noqa: E402
 from jev.tiers import decide as _decide  # noqa: E402
 from jev.types import FAIL_SAFE  # noqa: E402
@@ -66,6 +68,26 @@ def handle_play(payload: dict, engine=ENGINE, runs=None) -> dict:
             return {"error": str(exc)}
         runs[run.run_id] = run
         return run.to_dict()
+    if play_name == "camera_offline":
+        event = {k: str(payload.get(k, "")).strip()
+                 for k in ("property_id", "date", "camera", "ts",
+                           "mention")}
+        try:
+            run = handle_camera_offline_event(engine, event)
+        except ValueError as exc:
+            return {"error": str(exc)}
+        runs[run.run_id] = run
+        return run.to_dict()
+    if play_name == "camera_post_turnover":
+        event = {k: str(payload.get(k, "")).strip()
+                 for k in ("property_id", "date", "kind", "camera",
+                           "ts", "frame_id")}
+        try:
+            run = handle_post_turnover_event(engine, event)
+        except ValueError as exc:
+            return {"error": str(exc)}
+        runs[run.run_id] = run
+        return run.to_dict()
     if play_name == "cleaner_done":
         event = {k: str(payload.get(k, "")).strip()
                  for k in ("property_id", "date", "cleaner_id",
@@ -97,6 +119,11 @@ def handle_event(payload: dict, engine=ENGINE, runs=None) -> dict:
     event_type = str(payload.get("event", "")).strip()
     if not event_type:
         return {"error": "empty event"}
+    if event_type == "camera_online" and run.play == "camera_offline":
+        # The camera came back: if the offline run's outward step
+        # was only held, this closes the run as resolved.
+        handle_camera_online_event(engine, run, payload.get("payload") or {})
+        return run.to_dict()
     engine.handle_event(run, event_type, payload.get("payload") or {})
     return run.to_dict()
 

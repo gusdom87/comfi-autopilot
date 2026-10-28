@@ -110,10 +110,20 @@
      the staged frame, checks it against the staged calendar, and either logs it
      (the guest who was expected, the cleaner who was scheduled, nothing of note)
      or flags the <strong>operator</strong> (a crowd bigger than the booking, a
-     person nobody expected, a frame too dark to judge). This play never messages
-     a guest. The frames are staged metadata, not real photos.</p>
+     person nobody expected, a frame too dark to judge). The motion play never
+     messages a guest. Two Tier-1 extensions ride the same rails: a camera that
+     goes <strong>offline</strong> during a stay, on a switch the guest controls,
+     drafts the camera system's one guest message — held at the gate, in the
+     operator's chosen wording — and a house marked <strong>closed</strong> flips
+     the expectation, so any person flags the operator with the frame still
+     attached. A post-turnover check reads the door and lights state of the
+     emptied home. The frames are staged metadata, not real photos.</p>
   <button class="bigbtn" id="cc-guest">Camera motion — guest arriving, Studio 2N</button>
   <button class="bigbtn" id="cc-gathering">Camera motion — large gathering, Owner's Unit 1N</button>
+  <button class="bigbtn" id="cc-offline">Camera offline — switch flipped during a stay, Owner's Unit 1N</button>
+  <button class="bigbtn" id="cc-vacant">Camera motion — person at the closed house, Peter's House</button>
+  <button class="bigbtn" id="cc-state-open">Post-turnover check — door open, Studio 2N</button>
+  <button class="bigbtn" id="cc-state-ok">Post-turnover check — all secured, Studio 2N</button>
   <div class="timeline" id="cc-timeline"></div>
 
   <h3>Play: in-stay issue → handyman dispatch</h3>
@@ -187,6 +197,18 @@
         (r.note ? ' · &ldquo;' + esc(r.note) + '&rdquo;' : '') +
         (r.route ? ' · route: <strong>' + esc(r.route) + '</strong>' : '') +
         (r.reason ? ' · ' + esc(r.reason) : '') + '</div>';
+      if (r.door !== undefined) out += '<div>Door: <strong>' + esc(r.door) + '</strong> · lights: <strong>' +
+        esc(r.lights) + '</strong></div>';
+      if (r.switch_fed !== undefined) out += '<div>Camera switch-fed: <strong>' +
+        (r.switch_fed ? 'yes' : 'no') + '</strong>' +
+        (r.stay_in_progress !== undefined ? ' · stay in progress: ' + (r.stay_in_progress ? 'yes' : 'no') : '') +
+        (r.mention ? ' · wording: <strong>' + esc(r.mention) + '</strong>' : '') +
+        (r.route ? ' · route: <strong>' + esc(r.route) + '</strong>' : '') + '</div>';
+      if (r.vacant !== undefined) out += '<div>Property closed/vacant: <strong>' +
+        (r.vacant ? 'yes' : 'no') + '</strong>' +
+        (r.work_window_active !== undefined ? ' · scheduled work window active: ' +
+          (r.work_window_active ? 'yes' : 'no') : '') + '</div>';
+      if (r.resolved) out += '<div><strong>Resolved</strong> — the camera came back before anything sent.</div>';
       if (r.issue) out += '<div>Issue: <strong>' + esc(r.issue) + '</strong>' +
         (r.safety ? ' · <span class="err">SAFETY — operator flagged, no self-help</span>' : '') +
         (r.stay_in_progress !== undefined ? ' · stay in progress: ' + (r.stay_in_progress ? 'yes' : 'no') : '') +
@@ -253,9 +275,9 @@
     document.getElementById('cd-flag').onclick = cdFire(
       { property_id: 'peters-house', cleaner_id: 'cleaner-jader', finished_at: '3:05 PM' });
 
-    const ccFire = body => async () => {
+    const ccFire = (body, play) => async () => {
       const run = await post('/play', Object.assign(
-        { play: 'camera_check' }, body));
+        { play: play || 'camera_check' }, body));
       renderRun(run, document.getElementById('cc-timeline'));
     };
     document.getElementById('cc-guest').onclick = ccFire(
@@ -264,6 +286,21 @@
     document.getElementById('cc-gathering').onclick = ccFire(
       { property_id: 'cedar-hollow-1n', date: '2026-10-29', camera: 'backyard',
         ts: '2026-10-29T21:48:00', frame_id: 'f3' });
+    document.getElementById('cc-offline').onclick = ccFire(
+      { property_id: 'cedar-hollow-1n', date: '2026-10-29', camera: 'front-door',
+        ts: '2026-10-29T19:20:00', mention: 'lights_and_camera' },
+      'camera_offline');
+    document.getElementById('cc-vacant').onclick = ccFire(
+      { property_id: 'peters-house', date: '2026-10-30', camera: 'front-door',
+        ts: '2026-10-30T22:15:00', frame_id: 'f5' });
+    document.getElementById('cc-state-open').onclick = ccFire(
+      { property_id: 'cedar-hollow-2n', date: '2026-10-28', kind: 'post_turnover',
+        camera: 'front-door', ts: '2026-10-28T14:15:00', frame_id: 'f7' },
+      'camera_post_turnover');
+    document.getElementById('cc-state-ok').onclick = ccFire(
+      { property_id: 'cedar-hollow-2n', date: '2026-10-28', kind: 'post_turnover',
+        camera: 'front-door', ts: '2026-10-28T14:20:00', frame_id: 'f8' },
+      'camera_post_turnover');
 
     let ihRunId = null;
     const ihRender = run => {

@@ -4,7 +4,12 @@ os.environ["JEV_SPEND_STATE"] = os.path.join(os.path.dirname(__file__), "spend-p
 
 from jev.plays import (FixtureContext, PlayEngine, STAKES,
                        default_fixture_data, get, match)
-from jev.plays.camera_check import CameraCheck, handle_camera_event
+from jev.plays.camera_check import (CameraCheck, CameraOffline,
+                                    PostTurnoverCheck,
+                                    handle_camera_event,
+                                    handle_camera_offline_event,
+                                    handle_camera_online_event,
+                                    handle_post_turnover_event)
 from jev.plays.vision import FixtureVision, STAGED_FRAMES, parse_classification
 from jev.types import Category, Decision
 
@@ -216,3 +221,238 @@ def test_parse_classification_is_strict():
                                 ' "people_count": -1}') is None
     assert parse_classification("no json here") is None
     assert parse_classification("") is None
+
+
+def test_parse_classification_door_lights_state_fields():
+    # The state fields are optional for the motion play (absent ->
+    # unknown), validated strictly when present: the post-turnover
+    # check stakes a route on them, so a bad value must fail safe.
+    ok = parse_classification(
+        '{"scene": "nothing_notable", "people_count": 0,'
+        ' "note": "Door open.", "door": "open", "lights": "off"}')
+    assert ok is not None and ok.door == "open" and ok.lights == "off"
+    legacy = parse_classification(
+        '{"scene": "vehicle", "people_count": null, "note": "A van."}')
+    assert legacy is not None and legacy.door == "unknown"
+    assert legacy.lights == "unknown"
+    assert parse_classification(
+        '{"scene": "nothing_notable", "door": "ajar"}') is None
+    assert parse_classification(
+        '{"scene": "nothing_notable", "lights": "dim"}') is None
+    assert parse_classification(
+        '{"scene": "nothing_notable", "door": null}') is None
+
+
+# -- vacant mode -------------------------------------------------------
+
+def test_vacant_mode_person_notifies_with_frame_reference():
+    run = _event(_engine(), "f5")
+    assert run.status == "completed"
+    assert run.data["outcome"] == "notify_operator"
+    reality = _step(run, "match_reality")
+    assert reality.result["vacant"] is True
+    notify = _step(run, "notify_operator")
+    assert notify.status == "held"
+    summary = notify.result["summary"]
+    assert "closed and should be vacant" in summary
+    assert "frame f5" in summary
+    assert "still" in summary.lower()
+    assert "attached in the simulated" in summary
+    assert notify.result["frame_id"] == "f5"
+
+
+def test_vacant_mode_cleaner_inside_scheduled_window_logs():
+    run = _event(_engine(), "f6")
+    assert run.status == "completed" and run.data["outcome"] == "logged"
+    reality = _step(run, "match_reality")
+    assert reality.result["vacant"] is True
+    assert reality.result["work_window_active"] is True
+    assert _step(run, "classify_frame").result["route"] == "log"
+    assert _step(run, "log_event").result["logged"] is True
+    assert _step(run, "notify_operator").status == "skipped"
+
+
+def test_person_present_when_cleaning_window_opens_notifies():
+    # Turnover presence corroboration: f9 is a person (not the
+    # cleaner) still at the door two minutes after the cleaning
+    # window opens. The operator hears the Play 3 warning, not a
+    # generic stranger flag.
+    run = _event(_engine(), "f9")
+    assert run.status == "completed"
+    assert run.data["outcome"] == "notify_operator"
+    classify = _step(run, "classify_frame")
+    assert classify.result["scene"] == "unknown_person"
+    assert "guest may not have left yet" in classify.result["reason"]
+    notify = _step(run, "notify_operator")
+    assert notify.status == "held"
+    assert "guest may not have left yet" in notify.result["summary"]
+
+
+# -- camera offline: the switch play -----------------------------------
+
+def _offline(engine, play=None, **payload):
+    base = {"property_id": "cedar-hollow-1n", "date": "2026-10-29",
+            "camera": "front-door", "ts": "2026-10-29T19:20:00"}
+    base.update(payload)
+    return handle_camera_offline_event(engine, base, play=play)
+
+
+def test_offline_during_stay_drafts_switch_message_lights_and_camera():
+    run = _offline(_engine())
+    assert run.status == "completed"
+    assert run.data["outcome"] == "switch_message_held"
+    reality = _step(run, "check_reality")
+    assert reality.result["stay_in_progress"] is True
+    assert reality.result["switch_fed"] is True
+    assert reality.result["route"] == "guest"
+    assert reality.result["mention"] == "lights_and_camera"
+    msg = _step(run, "guest_switch_message")
+    assert msg.action_key == "message_guest" and msg.stake == "middle"
+    assert msg.disposition == "hold" and msg.status == "held"
+    assert msg.result["executed"] is False
+    draft = msg.result["draft"]
+    assert "by the front door, inside" in draft
+    assert "entrance lights and the outside camera" in draft
+    assert "flip it back on" in draft
+    assert "Thank you" in draft
+    assert "Alex" in draft
+    assert _step(run, "notify_operator").status == "skipped"
+
+
+def test_offline_during_stay_lights_only_wording_variant():
+    run = _offline(_engine(), mention="lights_only")
+    msg = _step(run, "guest_switch_message")
+    assert msg.status == "held"
+    assert msg.result["mention"] == "lights_only"
+    draft = msg.result["draft"]
+    assert "entrance lights" in draft
+    assert "camera" not in draft.lower()
+
+
+def test_offline_play_instance_mention_variant():
+    run = _offline(_engine(), play=CameraOffline(mention="lights_only"))
+    assert _step(run, "guest_switch_message").result["mention"] \
+        == "lights_only"
+
+
+def test_offline_no_stay_notifies_operator_no_guest_draft():
+    run = _offline(_engine(), date="2026-10-28")
+    assert run.status == "completed"
+    assert run.data["outcome"] == "operator_flagged"
+    reality = _step(run, "check_reality")
+    assert reality.result["stay_in_progress"] is False
+    assert reality.result["route"] == "operator"
+    assert _step(run, "guest_switch_message").status == "skipped"
+    notify = _step(run, "notify_operator")
+    assert notify.status == "held"
+    assert notify.result["executed"] is False
+    assert "No guest message was drafted" in notify.result["summary"]
+    assert "maintenance" in notify.result["summary"]
+
+
+def test_offline_camera_not_switch_fed_notifies_operator():
+    run = _offline(_engine(), camera="backyard")
+    assert run.data["outcome"] == "operator_flagged"
+    reality = _step(run, "check_reality")
+    assert reality.result["stay_in_progress"] is True
+    assert reality.result["switch_fed"] is False
+    assert _step(run, "guest_switch_message").status == "skipped"
+    assert _step(run, "notify_operator").status == "held"
+
+
+def test_camera_back_online_resolves_held_offline_run():
+    engine = _engine()
+    run = _offline(engine)
+    assert _step(run, "guest_switch_message").result["executed"] is False
+    resolved = handle_camera_online_event(
+        engine, run, {"camera": "front-door",
+                      "ts": "2026-10-29T19:26:00"})
+    assert resolved.data["outcome"] == "resolved_camera_back"
+    assert resolved.data["resolved"] is True
+    closing = _step(resolved, "resolve_camera_online")
+    assert closing.status == "done"
+    assert closing.result["resolved"] is True
+    # The held message stays held: it never executed.
+    assert _step(resolved, "guest_switch_message").status == "held"
+
+
+def test_offline_unknown_property_holds_and_bad_variant_raises():
+    run = _offline(_engine(), property_id="no-such-property")
+    assert run.status == "held_for_human"
+    assert _step(run, "guest_switch_message").status == "pending"
+    try:
+        _offline(_engine(), mention="everything")
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("expected ValueError for a bad variant")
+    try:
+        handle_camera_offline_event(_engine(), {"property_id": "x"})
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("expected ValueError for a malformed event")
+
+
+# -- post-turnover state check -----------------------------------------
+
+def _post(engine, frame, play=None, **over):
+    rec = STAGED_FRAMES[frame]
+    payload = {"property_id": rec["property_id"], "date": rec["date"],
+               "kind": "post_turnover", "camera": rec["camera"],
+               "ts": rec["ts"], "frame_id": frame}
+    payload.update(over)
+    return handle_post_turnover_event(engine, payload, play=play)
+
+
+def test_post_turnover_door_open_notifies_operator():
+    run = _post(_engine(), "f7")
+    assert run.status == "completed"
+    assert run.data["outcome"] == "notify_operator"
+    state = _step(run, "classify_state")
+    assert state.result["door"] == "open"
+    assert state.result["lights"] == "off"
+    assert state.result["route"] == "notify"
+    notify = _step(run, "notify_operator")
+    assert notify.status == "held"
+    assert notify.result["executed"] is False
+    assert "door open" in notify.result["summary"]
+    assert "Frame: f7" in notify.result["summary"]
+    assert _step(run, "log_event").status == "skipped"
+    # No guest-facing step anywhere in the state check either; the
+    # offline play above is the camera system's only one.
+    assert all(s.action_key != "message_guest" for s in run.steps)
+
+
+def test_post_turnover_all_consistent_logs_only():
+    run = _post(_engine(), "f8")
+    assert run.status == "completed" and run.data["outcome"] == "logged"
+    state = _step(run, "classify_state")
+    assert state.result["door"] == "closed"
+    assert state.result["lights"] == "off"
+    assert state.result["route"] == "log"
+    assert _step(run, "log_event").result["logged"] is True
+    assert _step(run, "notify_operator").status == "skipped"
+
+
+def test_post_turnover_unsettled_state_fails_safe_to_notify():
+    vision = FixtureVision(staged={
+        "fx-state": {"scene": "nothing_notable", "people_count": 0,
+                     "note": "Dark frame at the door."}})
+    run = _post(_engine(), "f8", play=PostTurnoverCheck(vision=vision),
+                frame_id="fx-state")
+    assert run.data["outcome"] == "notify_operator"
+    assert _step(run, "classify_state").result["route"] == "notify"
+    assert _step(run, "notify_operator").status == "held"
+
+
+def test_post_turnover_malformed_event_is_a_caller_error():
+    try:
+        handle_post_turnover_event(
+            _engine(), {"property_id": "cedar-hollow-2n",
+                        "date": "2026-10-28", "kind": "weekly",
+                        "frame_id": "f8"})
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("expected ValueError for a bad kind")
