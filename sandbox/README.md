@@ -42,9 +42,18 @@ Endpoints:
                {"play": "camera_check", "property_id": "lockport-1n",
                 "date": "2026-10-29", "camera": "backyard",
                 "ts": "2026-10-29T21:48:00", "frame_id": "f3"}
+               Body for in-stay issue (a guest message, like early
+               check-in; the play extracts the issue itself):
+               {"play": "in_stay_issue", "message": "...",
+                "property_id": "lockport-1n", "date": "2026-10-29"}
   POST /event  deliver an event to a waiting run:
                {"run_id": "...", "event": "cleaner_done",
                 "payload": {"finished_at": "1:32 PM"}}
+               The in-stay issue play waits for vendor events:
+               {"run_id": "...", "event": "vendor_eta",
+                "payload": {"eta": "3:30 PM"}} and then
+               {"run_id": "...", "event": "vendor_done",
+                "payload": {"finished_at": "4:05 PM"}}
   GET  /run/<id>   the run's current state (same JSON /play returns).
 
 Driving it on the page:
@@ -75,3 +84,16 @@ Driving it on the page:
   path was verified against the real API on 2026-10-27 (see
   vision.py for the confirmed request shape) but the sandbox never
   uses it.
+- In-stay issue: "Guest reports a leak — Owner's Unit 1N" runs
+  Play 4 against the mid-stay fixture (Alex, in residence
+  2026-10-29): the issue is extracted, the stay and the fixture
+  handyman are verified, the guest reply is drafted with a safe
+  self-help step, and the dispatch is HELD at the dispatch_vendor
+  gate with the property's staged access notes in the artifact.
+  Press "Vendor update: arriving 3:30 PM" and the guest ETA update
+  is drafted and held; press "Vendor reports done" and the
+  fix-done guest update completes the chain. "Guest smells gas"
+  runs the safety branch: the guest reply carries safety guidance
+  instead of self-help, and the operator notification is produced
+  and held in the same run. Ending the chain with the done event
+  alone (no ETA first) also works — the ETA steps skip.

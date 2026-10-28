@@ -26,8 +26,10 @@ def test_registry_and_trigger_matching():
     assert play is not None and play.name == "early_checkin"
     # Noise never fires a play.
     assert match(Decision(Category.IGNORE, 0.95), "check in at 1pm", {}) is None
-    # A leak is Act but not this play.
-    assert match(d, "Water is leaking under the sink", {}) is None
+    # A leak is Act but not this play: it routes to Play 4
+    # (in-stay issues), registered after early check-in.
+    leak_play = match(d, "Water is leaking under the sink", {})
+    assert leak_play is not None and leak_play.name == "in_stay_issue"
 
 
 def test_gate_holds_charge_by_default_and_logs_it(tmp_path):
