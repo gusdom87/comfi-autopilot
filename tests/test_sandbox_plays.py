@@ -103,24 +103,42 @@ def test_play_cleaner_done_problem_flag_holds_and_sends_nothing():
     assert send["status"] == "pending" and send["result"] == {}
 
 
+def _gathering_frame(srv, engine, runs, frame_id, ts):
+    return srv.handle_play({"play": "camera_check",
+                            "property_id": "cedar-1a", "date": "2026-10-29",
+                            "camera": "backyard", "ts": ts,
+                            "frame_id": frame_id},
+                           engine=engine, runs=runs)
+
+
 def test_play_camera_check_gathering_notifies_operator_held():
+    # Batch 3 (case #6): f3 alone logs; the sustained run f26, f27,
+    # f3 is what notifies.
+    from jev.plays.camera_check import _reset_gathering_frames
+    _reset_gathering_frames()
     srv = _srv()
     engine, runs = _fresh()
-    out = srv.handle_play({"play": "camera_check",
-                           "property_id": "cedar-1a", "date": "2026-10-29",
-                           "camera": "backyard", "ts": "2026-10-29T21:48:00",
-                           "frame_id": "f3"},
-                          engine=engine, runs=runs)
+    alone = _gathering_frame(srv, engine, runs, "f3", "2026-10-29T21:48:00")
+    assert alone["outcome"] == "logged"
+    _reset_gathering_frames()
+    engine, runs = _fresh()
+    for frame_id, ts in (("f26", "2026-10-29T21:20:00"),
+                         ("f27", "2026-10-29T21:35:00")):
+        assert _gathering_frame(srv, engine, runs, frame_id, ts)["outcome"] \
+            == "logged"
+    out = _gathering_frame(srv, engine, runs, "f3", "2026-10-29T21:48:00")
     assert out["status"] == "completed" and out["outcome"] == "notify_operator"
     classify = _step(out, "classify_frame")
     assert classify["result"]["scene"] == "large_gathering"
     assert classify["result"]["people_count"] == 11
+    assert classify["result"]["gathering"]["floor"] == 9
     notify = _step(out, "notify_operator")
     assert notify["action_key"] == "notify_operator"
     assert notify["stake"] == "middle"
     assert notify["disposition"] == "hold" and notify["status"] == "held"
     assert notify["result"]["executed"] is False
     assert "party of 4" in notify["result"]["summary"]
+    assert "at least 9 people (model estimate" in notify["result"]["summary"]
     assert _step(out, "log_event")["status"] == "skipped"
     # The run is in the store and fetchable by id.
     assert srv.handle_get_run(out["run_id"], runs=runs)["run_id"] == out["run_id"]
@@ -509,3 +527,96 @@ def test_sandbox_upkeep_report():
     assert out["outcome"] == "upkeep_report"
     build = _step(out, "build_report")
     assert len(build["result"]["notes"]) == 3
+
+
+# ---------------------------------------------------------------------
+# Play 7 batch 3: gathering accumulation, vendor proof, move-in signs
+# ---------------------------------------------------------------------
+
+def _vendor_play(srv, engine, runs, **over):
+    body = {"play": "camera_vendor_proof", "property_id": "maple-house",
+            "date": "2026-10-30", "vendor": "Fixture Handyman",
+            "window_start": "10:00", "window_end": "12:00"}
+    body.update(over)
+    opened = srv.handle_play(body, engine=engine, runs=runs)
+    assert not opened.get("error")
+    assert opened["status"] == "waiting"
+    assert _step(opened, "wait_window_closed")["status"] == "waiting"
+    return srv.handle_event({"run_id": opened["run_id"],
+                             "event": "vendor_window_closed",
+                             "payload": {}}, engine=engine, runs=runs)
+
+
+def test_sandbox_vendor_proof_sighting_logs_proof_with_frame():
+    srv = _srv()
+    engine, runs = _fresh()
+    out = _vendor_play(srv, engine, runs)
+    assert out["play"] == "camera_vendor_proof"
+    assert out["status"] == "completed"
+    assert out["outcome"] == "proof_of_service_logged"
+    proof = _step(out, "log_proof")
+    assert proof["action_key"] == "auto_close"
+    assert proof["result"]["frame_id"] == "f6"
+    assert "Presence evidence only" in proof["result"]["entry"]
+    assert _step(out, "notify_operator")["status"] == "skipped"
+    assert srv.handle_get_run(out["run_id"], runs=runs)["run_id"] \
+        == out["run_id"]
+
+
+def test_sandbox_vendor_proof_no_sighting_notifies_operator_held():
+    srv = _srv()
+    engine, runs = _fresh()
+    out = _vendor_play(srv, engine, runs, property_id="cedar-1a",
+                       date="2026-10-29", window_start="15:00",
+                       window_end="16:00")
+    assert out["outcome"] == "notify_operator"
+    notify = _step(out, "notify_operator")
+    assert notify["disposition"] == "hold" and notify["status"] == "held"
+    assert notify["result"]["executed"] is False
+    assert "no vendor was seen inside the stated window" \
+        in notify["result"]["summary"]
+
+
+def test_sandbox_vendor_proof_bad_window_is_an_error():
+    srv = _srv()
+    engine, runs = _fresh()
+    out = srv.handle_play({"play": "camera_vendor_proof",
+                           "property_id": "maple-house",
+                           "date": "2026-10-30", "window_start": "noon",
+                           "window_end": "13:00"},
+                          engine=engine, runs=runs)
+    assert "error" in out
+
+
+def test_sandbox_move_in_signs_sequence():
+    from jev.plays.camera_check import _reset_move_in_signs
+    _reset_move_in_signs()
+    srv = _srv()
+    engine, runs = _fresh()
+    outcomes = []
+    for frame_id in ("f29", "f30", "f31", "f32"):
+        rec = {"f29": ("2026-11-02", "14:10"), "f30": ("2026-11-03", "18:05"),
+               "f31": ("2026-11-04", "17:40"),
+               "f32": ("2026-11-05", "19:15")}[frame_id]
+        out = srv.handle_play({"play": "camera_check",
+                               "property_id": "cedar-2a", "date": rec[0],
+                               "camera": "front-door",
+                               "ts": f"{rec[0]}T{rec[1]}:00",
+                               "frame_id": frame_id},
+                              engine=engine, runs=runs)
+        outcomes.append(out["outcome"])
+    assert outcomes == ["logged", "logged", "logged", "notify_operator"]
+    notify = _step(out, "notify_operator")
+    assert notify["status"] == "held"
+    assert notify["result"]["awareness_only"] is True
+    assert "signs consistent with a possible move-in" \
+        in notify["result"]["summary"]
+
+
+def test_sandbox_page_wires_the_batch3_buttons():
+    html = open(os.path.join(ROOT, "sandbox", "index.html")).read()
+    for button in ("cc-gathering-sustained", "cc-vendor-seen",
+                   "cc-vendor-missing", "cc-movein"):
+        assert f'id="{button}"' in html, button
+    assert "'camera_vendor_proof'" in html
+    assert "'vendor_window_closed'" in html

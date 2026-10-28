@@ -134,10 +134,21 @@
      empty home, cameras <strong>dropping together</strong> across
      properties collapse into one area-outage notification, and a periodic
      <strong>upkeep check</strong> turns the fleet's own history into
-     turnover notes (check the WiFi, wipe the lens). The frames are staged
-     metadata, not real photos.</p>
+     turnover notes (check the WiFi, wipe the lens). Batch 3 rides the same
+     rails: a <strong>gathering</strong> no longer fires on one frame — the
+     people estimates accumulate across the stay, and the operator hears only
+     when a sustained floor clears the booked party by a wide margin, worded
+     as &ldquo;at least N people (model estimate)&rdquo;; a vendor's stated
+     arrival window gets <strong>proof of service</strong> — a worker on
+     camera inside the window is logged with the frame, and a window that
+     closes with nobody seen goes to the operator, presence only and never a
+     word about the work; and boxes carried in on three distinct days of one
+     stay raise one awareness-only note: <strong>signs consistent with a
+     possible move-in</strong>. The frames are staged metadata, not real
+     photos.</p>
   <button class="bigbtn" id="cc-guest">Camera motion — guest arriving, Studio 2A</button>
-  <button class="bigbtn" id="cc-gathering">Camera motion — large gathering, Garden Unit 1A</button>
+  <button class="bigbtn" id="cc-gathering">Camera motion — one crowded frame, Garden Unit 1A (logs: one frame never fires)</button>
+  <button class="bigbtn" id="cc-gathering-sustained">Camera motion — gathering sustained across three frames, Garden Unit 1A</button>
   <button class="bigbtn" id="cc-offline">Camera offline — switch flipped during a stay, Garden Unit 1A</button>
   <button class="bigbtn" id="cc-vacant">Camera motion — person at the closed house, Maple Street House</button>
   <button class="bigbtn" id="cc-state-open">Post-turnover check — door open, Studio 2A</button>
@@ -150,6 +161,9 @@
   <button class="bigbtn" id="cc-snow">Morning check — snow still down at an empty home, Maple Street House</button>
   <button class="bigbtn" id="cc-outage">Area outage — three cameras drop at once, Cedar Hollow</button>
   <button class="bigbtn" id="cc-upkeep">Camera upkeep — fleet self-check (WiFi pattern, dirty lenses)</button>
+  <button class="bigbtn" id="cc-vendor-seen">Vendor proof of service — worker on camera inside the stated window, Maple Street House</button>
+  <button class="bigbtn" id="cc-vendor-missing">Vendor proof of service — window closed, no vendor seen, Garden Unit 1A</button>
+  <button class="bigbtn" id="cc-movein">Camera motion — boxes carried in on a third day, Studio 2A (possible move-in signs)</button>
   <div class="timeline" id="cc-timeline"></div>
 
   <h3>Play: in-stay issue → handyman dispatch</h3>
@@ -219,12 +233,32 @@
         (r.arrival_today ? 'yes' : 'no') +
         (r.property ? ' · ' + esc(r.property) : '') + '</div>';
       if (r.scene) out += '<div>Frame classified: <strong>' + esc(r.scene) + '</strong>' +
-        (r.people_count !== undefined && r.people_count !== null ? ' · people: ' + r.people_count : '') +
+        (r.people_count !== undefined && r.people_count !== null ? ' · people (model estimate): ' + r.people_count : '') +
         (r.view && r.view !== 'unknown' ? ' · view: <strong>' + esc(r.view) + '</strong>' : '') +
         (r.animal && r.animal !== 'unknown' ? ' · animal: <strong>' + esc(r.animal) + '</strong>' : '') +
+        (r.carrying && r.carrying !== 'unknown' ? ' · carrying: <strong>' + esc(r.carrying) + '</strong>' : '') +
         (r.note ? ' · &ldquo;' + esc(r.note) + '&rdquo;' : '') +
         (r.route ? ' · route: <strong>' + esc(r.route) + '</strong>' : '') +
         (r.reason ? ' · ' + esc(r.reason) : '') + '</div>';
+      if (r.gathering) out += '<div>Gathering accumulation (this stay): sustained floor <strong>' +
+        (r.gathering.floor === null ? 'none yet' : 'at least ' + r.gathering.floor + ' (model estimate)') +
+        '</strong> · booked ' + r.gathering.booked + ' + margin ' + r.gathering.margin +
+        ' = fires at ' + r.gathering.threshold +
+        (r.gathering.fire ? ' · <span class="err">sustained past the margin — operator notified</span>'
+          : r.gathering.already_flagged ? ' · already flagged for this stay' : ' · logs only') + '</div>';
+      if (r.move_in) out += '<div>Move-in signs (this stay): <strong>' + r.move_in.days + ' of ' +
+        r.move_in.min_days + ' distinct days</strong> with boxes or belongings carried in' +
+        (r.move_in.fire ? ' · <span class="err">one awareness-only notification</span>'
+          : r.move_in.already_flagged ? ' · already flagged for this stay' : ' · logs only') + '</div>';
+      if (r.window) out += '<div>Vendor window: <strong>' + esc(r.window) + '</strong>' +
+        (r.vendor ? ' · ' + esc(r.vendor) : '') + (r.camera ? ' · camera: ' + esc(r.camera) : '') + '</div>';
+      if (r.window_frames) out += '<div>Frames inside the window: <strong>' +
+        (r.window_frames.length ? r.window_frames.map(f => esc(f.frame_id) + ' (' + esc(f.when) + ', ' +
+          esc(f.read.replace(/_/g, ' ')) + ')').join(', ') : 'none on record') + '</strong>' +
+        (r.unreadable ? ' · could not be read: ' + r.unreadable : '') +
+        (r.route ? ' · route: <strong>' + esc(r.route) + '</strong>' : '') +
+        (r.reason ? ' · ' + esc(r.reason) : '') + '</div>';
+      if (r.entry) out += '<div class="draft">Proof-of-service log entry: &ldquo;' + esc(r.entry) + '&rdquo;</div>';
       if (r.ground !== undefined) out += '<div>Ground: <strong>' + esc(r.ground) + '</strong>' +
         (r.urgent ? ' · <span class="err">URGENT — a cleaner or guest is due today</span>' : '') +
         (r.reason ? ' · ' + esc(r.reason) : '') + '</div>';
@@ -371,6 +405,59 @@
     document.getElementById('cc-upkeep').onclick = ccFire(
       { date: '2026-10-28', kind: 'camera_upkeep' },
       'camera_upkeep');
+
+    // Cross-frame patterns: several motion events in order. The
+    // timeline shows the run that notified, if one did; else the last.
+    const ccSequence = (frames, intro) => async () => {
+      const mount = document.getElementById('cc-timeline');
+      const done = [];
+      for (const f of frames) {
+        const run = await post('/play', Object.assign({ play: 'camera_check' }, f));
+        if (run.error) { mount.innerHTML = '<p class="err">' + esc(run.error) + '</p>'; return; }
+        done.push({ frame: f.frame_id, run });
+      }
+      const shown = done.find(d => d.run.outcome === 'notify_operator') || done[done.length - 1];
+      renderRun(shown.run, mount);
+      mount.insertAdjacentHTML('afterbegin', '<p class="fine">' + intro + ' Frames in order: ' +
+        done.map(d => esc(d.frame) + ' &rarr; <strong>' + esc(d.run.outcome) + '</strong>').join(' · ') +
+        '. The timeline below is frame ' + esc(shown.frame) + '&rsquo;s run.</p>');
+    };
+    document.getElementById('cc-gathering-sustained').onclick = ccSequence([
+      { property_id: 'cedar-1a', date: '2026-10-29', camera: 'backyard', ts: '2026-10-29T21:20:00', frame_id: 'f26' },
+      { property_id: 'cedar-1a', date: '2026-10-29', camera: 'backyard', ts: '2026-10-29T21:35:00', frame_id: 'f27' },
+      { property_id: 'cedar-1a', date: '2026-10-29', camera: 'backyard', ts: '2026-10-29T21:48:00', frame_id: 'f3' } ],
+      'Three patio frames over 28 minutes during Alex&rsquo;s stay (booked party of four). One frame never ' +
+      'fires; the notification rides on the sustained floor, and only past the wide margin. A repeat ' +
+      'click finds the stay already flagged and logs.');
+    document.getElementById('cc-movein').onclick = ccSequence([
+      { property_id: 'cedar-2a', date: '2026-11-02', camera: 'front-door', ts: '2026-11-02T14:10:00', frame_id: 'f29' },
+      { property_id: 'cedar-2a', date: '2026-11-03', camera: 'front-door', ts: '2026-11-03T18:05:00', frame_id: 'f30' },
+      { property_id: 'cedar-2a', date: '2026-11-04', camera: 'front-door', ts: '2026-11-04T17:40:00', frame_id: 'f31' },
+      { property_id: 'cedar-2a', date: '2026-11-05', camera: 'front-door', ts: '2026-11-05T19:15:00', frame_id: 'f32' } ],
+      'Jordan&rsquo;s long stay at Studio 2A: arrival-day suitcases (never counted), then boxes or ' +
+      'belongings carried in on three distinct days. The third day raises one awareness-only ' +
+      'notification; it never says a move-in is happening.');
+
+    // Vendor proof of service: the stated window opens the run, the
+    // scheduled close finishes it.
+    const ccVendor = (body, intro) => async () => {
+      const mount = document.getElementById('cc-timeline');
+      const opened = await post('/play', Object.assign({ play: 'camera_vendor_proof' }, body));
+      if (opened.error) { mount.innerHTML = '<p class="err">' + esc(opened.error) + '</p>'; return; }
+      const run = await post('/event', { run_id: opened.run_id, event: 'vendor_window_closed', payload: {} });
+      renderRun(run, mount);
+      mount.insertAdjacentHTML('afterbegin', '<p class="fine">' + intro + ' The <code>vendor_window</code> ' +
+        'event opened the run (it parked: <strong>' + esc(opened.status) + '</strong>); the ' +
+        '<code>vendor_window_closed</code> event — the scheduled close — checked the frames inside it.</p>');
+    };
+    document.getElementById('cc-vendor-seen').onclick = ccVendor(
+      { property_id: 'maple-house', date: '2026-10-30', vendor: 'Fixture Handyman',
+        window_start: '10:00', window_end: '12:00' },
+      'The vendor stated 10 AM&ndash;noon at the closed house.');
+    document.getElementById('cc-vendor-missing').onclick = ccVendor(
+      { property_id: 'cedar-1a', date: '2026-10-29', vendor: 'Fixture Handyman',
+        window_start: '15:00', window_end: '16:00' },
+      'The vendor stated 3&ndash;4 PM for Alex&rsquo;s leak.');
     document.getElementById('cc-outage').onclick = async () => {
       const d = await post('/play', { play: 'camera_outage_cluster', events: [
         { property_id: 'cedar-1a', date: '2026-10-29', camera: 'front-door',

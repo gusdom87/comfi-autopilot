@@ -18,7 +18,8 @@ from jev.plays.camera_check import (  # noqa: E402
     handle_camera_online_event, handle_camera_upkeep_event,
     handle_guest_lockout_event, handle_guest_unsafe_event,
     handle_morning_check_event, handle_offline_burst,
-    handle_post_turnover_event, handle_sunset_check_event)
+    handle_post_turnover_event, handle_sunset_check_event,
+    handle_vendor_window_event)
 from jev.plays.cleaner_done import handle_cleaner_done_event  # noqa: E402
 from jev.tiers import decide as _decide  # noqa: E402
 from jev.types import FAIL_SAFE  # noqa: E402
@@ -135,6 +136,19 @@ def handle_play(payload: dict, engine=ENGINE, runs=None) -> dict:
                  for k in ("date", "kind")}
         try:
             run = handle_camera_upkeep_event(engine, event)
+        except ValueError as exc:
+            return {"error": str(exc)}
+        runs[run.run_id] = run
+        return run.to_dict()
+    if play_name == "camera_vendor_proof":
+        # The vendor's stated window starts the run; it then waits
+        # for the window to close (POST /event,
+        # vendor_window_closed), which checks the frames inside it.
+        event = {k: str(payload.get(k, "")).strip()
+                 for k in ("property_id", "date", "vendor",
+                           "window_start", "window_end", "camera")}
+        try:
+            run = handle_vendor_window_event(engine, event)
         except ValueError as exc:
             return {"error": str(exc)}
         runs[run.run_id] = run

@@ -29,6 +29,15 @@ at an empty home, and "animal" (dog_sized | small | unknown) — how
 big the animal in the frame is, which is what the dog-with-no-pet
 route stakes its one notification on. Absent still means "unknown",
 and "unknown" never fires either route.
+
+Batch 3 adds two more on the same terms: "carrying"
+(boxes_or_belongings | luggage | none | unknown) — what the people
+in the frame are carrying, which the move-in-signs pattern counts
+only when it reads boxes_or_belongings (ordinary travel luggage
+never counts) — and "worker" (present | absent | unknown) — whether
+a person in the frame reads as a worker on a job, which is the only
+presence evidence the vendor proof-of-service check accepts. Absent
+means "unknown", and "unknown" is never evidence of anything.
 """
 import base64
 import json
@@ -55,6 +64,8 @@ LIGHT_STATES = ("on", "off", "unknown")
 VIEW_STATES = ("normal", "blocked", "shifted", "unknown")
 GROUND_STATES = ("clear", "snow_covered", "unknown")
 ANIMAL_KINDS = ("dog_sized", "small", "unknown")
+CARRY_STATES = ("boxes_or_belongings", "luggage", "none", "unknown")
+WORKER_STATES = ("present", "absent", "unknown")
 
 VISION_SYSTEM = (
     "You classify a single still frame from an exterior camera at a "
@@ -66,7 +77,9 @@ VISION_SYSTEM = (
     '"lights": one of ["on", "off", "unknown"], '
     '"view": one of ["normal", "blocked", "shifted", "unknown"], '
     '"ground": one of ["clear", "snow_covered", "unknown"], '
-    '"animal": one of ["dog_sized", "small", "unknown"]}. '
+    '"animal": one of ["dog_sized", "small", "unknown"], '
+    '"carrying": one of ["boxes_or_belongings", "luggage", "none", '
+    '"unknown"], "worker": one of ["present", "absent", "unknown"]}. '
     "You cannot identify who a person is — judge only the kind of "
     "scene. Judge the door and lights state only when a door or the "
     'home\'s lights are actually visible; otherwise report "unknown" '
@@ -83,7 +96,17 @@ VISION_SYSTEM = (
     '"dog_sized" for an animal the size of a dog (a dog, in '
     'practice), "small" for anything smaller (a cat, a raccoon), '
     '"unknown" when there is no animal or its size cannot be '
-    "judged. If the frame is too dark, blurry, "
+    "judged. Judge the carrying field only when a person is "
+    'visible: "boxes_or_belongings" for moving boxes, bins, '
+    "furniture, a mattress, or household belongings beyond travel "
+    'luggage; "luggage" for ordinary travel bags, suitcases, or '
+    'groceries; "none" when the people carry nothing; "unknown" '
+    "when there is no person or it cannot be judged. Judge the "
+    'worker field from the frame itself: "present" when a person '
+    "in the frame looks like a worker on a job (tools, work "
+    'supplies, work clothes, a work vehicle beside them), "absent" '
+    "when the frame clearly shows no such person, and \"unknown\" "
+    "when it cannot be judged. If the frame is too dark, blurry, "
     'or obstructed to judge, the scene is "unclear".'
 )
 
@@ -115,6 +138,14 @@ class Classification:
     # "dog_sized" can ever fire the dog route; a cat or a raccoon
     # is "small" and never does. "unknown" unless settled.
     animal: str = "unknown"         # one of ANIMAL_KINDS
+    # What the people in the frame carry (batch 3, case #55, move-in
+    # signs): only "boxes_or_belongings" counts toward the pattern;
+    # ordinary luggage never does. "unknown" unless settled.
+    carrying: str = "unknown"       # one of CARRY_STATES
+    # Whether a person in the frame reads as a worker on a job
+    # (batch 3, case #23, vendor proof of service): the presence
+    # evidence the proof check accepts. A read, never an identity.
+    worker: str = "unknown"         # one of WORKER_STATES
 
 
 def parse_classification(text: str, source: str = "live",
@@ -147,11 +178,16 @@ def parse_classification(text: str, source: str = "live",
         animal = obj.get("animal", "unknown")
         if ground not in GROUND_STATES or animal not in ANIMAL_KINDS:
             return None
+        carrying = obj.get("carrying", "unknown")
+        worker = obj.get("worker", "unknown")
+        if carrying not in CARRY_STATES or worker not in WORKER_STATES:
+            return None
         return Classification(scene=scene, people_count=people,
                               note=str(obj.get("note", "")),
                               source=source, cost_usd=cost_usd,
                               door=door, lights=lights, view=view,
-                              ground=ground, animal=animal)
+                              ground=ground, animal=animal,
+                              carrying=carrying, worker=worker)
     except (ValueError, KeyError, TypeError):
         return None
 
@@ -216,7 +252,8 @@ STAGED_FRAMES: dict[str, dict] = {
                        "staged 10 AM-noon scheduled service window.",
         "classification": {
             "scene": "cleaner", "people_count": 1,
-            "note": "One person with cleaning supplies entering."},
+            "note": "One person with cleaning supplies entering.",
+            "worker": "present"},
     },
     "f7": {
         "property_id": "cedar-2a", "date": "2026-10-28",
@@ -451,6 +488,100 @@ STAGED_FRAMES: dict[str, dict] = {
             "note": "Snow covers the walkway.",
             "ground": "snow_covered"},
     },
+    # Final-list batch 3 (cases #6, #23, #55). The gathering pair
+    # f26/f27 come before f3 on the same patio the same evening:
+    # with f3 they are a sustained run of estimates across 28
+    # minutes, which is what the accumulation fires on — f3 alone
+    # no longer does. f28 is the vendor-window frame with no worker
+    # in it. f29-f33 are one long stay at Studio 2A: arrival-day
+    # luggage (never counts), then boxes or belongings on three
+    # distinct days (the move-in-signs pattern), then one more
+    # boxes frame after the pattern is already flagged.
+    "f26": {
+        "property_id": "cedar-1a", "date": "2026-10-29",
+        "camera": "backyard", "ts": "2026-10-29T21:20:00",
+        "description": "People gathered on the patio in the evening, "
+                       "mid-stay, more than the booked party of four "
+                       "— the first frame of the evening's run.",
+        "classification": {
+            "scene": "large_gathering", "people_count": 9,
+            "note": "A group gathered on the patio."},
+    },
+    "f27": {
+        "property_id": "cedar-1a", "date": "2026-10-29",
+        "camera": "backyard", "ts": "2026-10-29T21:35:00",
+        "description": "Fifteen minutes later the patio group is "
+                       "still there and a little larger.",
+        "classification": {
+            "scene": "large_gathering", "people_count": 10,
+            "note": "The group on the patio is still there."},
+    },
+    "f28": {
+        "property_id": "cedar-1a", "date": "2026-10-29",
+        "camera": "front-door", "ts": "2026-10-29T15:25:00",
+        "description": "Inside the handyman's stated 3-4 PM window "
+                       "for Alex's leak: leaves blow across an empty "
+                       "walkway; nobody at the door.",
+        "classification": {
+            "scene": "nothing_notable", "people_count": 0,
+            "note": "Leaves blowing across an empty walkway.",
+            "worker": "absent"},
+    },
+    "f29": {
+        "property_id": "cedar-2a", "date": "2026-11-02",
+        "camera": "front-door", "ts": "2026-11-02T14:10:00",
+        "description": "Jordan's long stay begins: one person with "
+                       "two suitcases at the studio door — ordinary "
+                       "luggage, which never counts toward move-in "
+                       "signs.",
+        "classification": {
+            "scene": "expected_guest", "people_count": 1,
+            "note": "One person with two suitcases at the studio "
+                    "door.",
+            "carrying": "luggage"},
+    },
+    "f30": {
+        "property_id": "cedar-2a", "date": "2026-11-03",
+        "camera": "front-door", "ts": "2026-11-03T18:05:00",
+        "description": "The next evening: one person carrying moving "
+                       "boxes to the studio door.",
+        "classification": {
+            "scene": "expected_guest", "people_count": 1,
+            "note": "One person carrying moving boxes to the door.",
+            "carrying": "boxes_or_belongings"},
+    },
+    "f31": {
+        "property_id": "cedar-2a", "date": "2026-11-04",
+        "camera": "front-door", "ts": "2026-11-04T17:40:00",
+        "description": "A second day: a stack of boxes and a floor "
+                       "lamp carried in.",
+        "classification": {
+            "scene": "expected_guest", "people_count": 1,
+            "note": "One person carrying a stack of boxes and a "
+                    "floor lamp.",
+            "carrying": "boxes_or_belongings"},
+    },
+    "f32": {
+        "property_id": "cedar-2a", "date": "2026-11-05",
+        "camera": "front-door", "ts": "2026-11-05T19:15:00",
+        "description": "A third distinct day: two people carry a "
+                       "mattress to the studio door — the frame that "
+                       "completes the multi-day pattern.",
+        "classification": {
+            "scene": "expected_guest", "people_count": 2,
+            "note": "Two people carrying a mattress to the door.",
+            "carrying": "boxes_or_belongings"},
+    },
+    "f33": {
+        "property_id": "cedar-2a", "date": "2026-11-05",
+        "camera": "front-door", "ts": "2026-11-05T19:40:00",
+        "description": "Later the same evening, more boxes — the "
+                       "pattern is already flagged, so this logs.",
+        "classification": {
+            "scene": "expected_guest", "people_count": 1,
+            "note": "One person carrying boxes to the door.",
+            "carrying": "boxes_or_belongings"},
+    },
 }
 
 
@@ -499,7 +630,9 @@ class FixtureVision:
                               lights=rec.get("lights", "unknown"),
                               view=rec.get("view", "unknown"),
                               ground=rec.get("ground", "unknown"),
-                              animal=rec.get("animal", "unknown"))
+                              animal=rec.get("animal", "unknown"),
+                              carrying=rec.get("carrying", "unknown"),
+                              worker=rec.get("worker", "unknown"))
 
 
 class LiveVision:
