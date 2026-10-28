@@ -14,9 +14,13 @@ Two implementations behind one small interface, classify(frame_id)
   when explicitly wired with an API key and real frame bytes.
 
 A classification is strict JSON: {"scene": one of SCENES,
-"people_count": int | null, "note": short string}. Anything that
-does not parse to exactly that shape returns None, and callers treat
-None exactly like an "unclear" frame: fail safe to a human.
+"people_count": int | null, "note": short string}. It may also carry
+the optional post-turnover state fields "door" (open | closed |
+unknown) and "lights" (on | off | unknown); when present they are
+validated just as strictly, and when absent they default to
+"unknown". Anything that does not parse to exactly that shape
+returns None, and callers treat None exactly like an "unclear"
+frame: fail safe to a human.
 """
 import base64
 import json
@@ -38,15 +42,22 @@ SCENES = (
     "unclear",           # too dark / blurry / obstructed to judge
 )
 
+DOOR_STATES = ("open", "closed", "unknown")
+LIGHT_STATES = ("on", "off", "unknown")
+
 VISION_SYSTEM = (
     "You classify a single still frame from an exterior camera at a "
     "short-term rental property. Reply with ONLY a JSON object: "
     '{"scene": one of ["expected_guest", "cleaner", "unknown_person", '
     '"large_gathering", "vehicle", "animal", "nothing_notable", '
     '"unclear"], "people_count": integer or null, "note": one short '
-    "sentence}. You cannot identify who a person is — judge only the "
-    "kind of scene. If the frame is too dark, blurry, or obstructed "
-    'to judge, the scene is "unclear".'
+    'sentence, "door": one of ["open", "closed", "unknown"], '
+    '"lights": one of ["on", "off", "unknown"]}. You cannot identify '
+    "who a person is — judge only the kind of scene. Judge the door "
+    "and lights state only when a door or the home's lights are "
+    'actually visible; otherwise report "unknown" for that field. '
+    "If the frame is too dark, blurry, or obstructed to judge, the "
+    'scene is "unclear".'
 )
 
 
@@ -57,6 +68,11 @@ class Classification:
     note: str
     source: str = "fixture"         # fixture | live
     cost_usd: float = 0.0
+    # Post-turnover state (Play 7 extension): what the frame shows
+    # about the door and the lights. "unknown" unless the frame (or
+    # the staged record) actually settles it.
+    door: str = "unknown"           # one of DOOR_STATES
+    lights: str = "unknown"         # one of LIGHT_STATES
 
 
 def parse_classification(text: str, source: str = "live",
@@ -78,9 +94,14 @@ def parse_classification(text: str, source: str = "live",
             if isinstance(people, bool) or not isinstance(people, int) \
                     or people < 0:
                 return None
+        door = obj.get("door", "unknown")
+        lights = obj.get("lights", "unknown")
+        if door not in DOOR_STATES or lights not in LIGHT_STATES:
+            return None
         return Classification(scene=scene, people_count=people,
                               note=str(obj.get("note", "")),
-                              source=source, cost_usd=cost_usd)
+                              source=source, cost_usd=cost_usd,
+                              door=door, lights=lights)
     except (ValueError, KeyError, TypeError):
         return None
 
@@ -127,6 +148,60 @@ STAGED_FRAMES: dict[str, dict] = {
             "scene": "unclear", "people_count": None,
             "note": "Frame too dark to identify anything."},
     },
+    "f5": {
+        "property_id": "peters-house", "date": "2026-10-30",
+        "camera": "front-door", "ts": "2026-10-30T22:15:00",
+        "description": "A person at the front door late in the "
+                       "evening, on a date the house is closed and "
+                       "vacant — nobody should be there at all.",
+        "classification": {
+            "scene": "unknown_person", "people_count": 1,
+            "note": "One person at the front door of the closed house."},
+    },
+    "f6": {
+        "property_id": "peters-house", "date": "2026-10-30",
+        "camera": "front-door", "ts": "2026-10-30T10:30:00",
+        "description": "A worker with cleaning supplies entering "
+                       "mid-morning on the closed date, inside the "
+                       "staged 10 AM-noon scheduled service window.",
+        "classification": {
+            "scene": "cleaner", "people_count": 1,
+            "note": "One person with cleaning supplies entering."},
+    },
+    "f7": {
+        "property_id": "lockport-2n", "date": "2026-10-28",
+        "camera": "front-door", "ts": "2026-10-28T14:15:00",
+        "description": "Post-turnover check after the cleaning "
+                       "window: the studio door is standing open and "
+                       "the lights are off.",
+        "classification": {
+            "scene": "nothing_notable", "people_count": 0,
+            "note": "No people; the front door is open.",
+            "door": "open", "lights": "off"},
+    },
+    "f8": {
+        "property_id": "lockport-2n", "date": "2026-10-28",
+        "camera": "front-door", "ts": "2026-10-28T14:20:00",
+        "description": "Post-turnover check after the cleaning "
+                       "window: door closed, lights off, nobody "
+                       "around — the home is as it should be.",
+        "classification": {
+            "scene": "nothing_notable", "people_count": 0,
+            "note": "No people; door closed and lights off.",
+            "door": "closed", "lights": "off"},
+    },
+    "f9": {
+        "property_id": "lockport-2n", "date": "2026-10-28",
+        "camera": "front-door", "ts": "2026-10-28T11:02:00",
+        "description": "A person still at the front door two "
+                       "minutes after the 11 AM cleaning window "
+                       "opens — not the cleaner; the departing guest "
+                       "may not have left yet.",
+        "classification": {
+            "scene": "unknown_person", "people_count": 1,
+            "note": "One person still at the front door as the "
+                    "cleaning window opens."},
+    },
 }
 
 
@@ -149,7 +224,9 @@ class FixtureVision:
         return Classification(scene=rec["scene"],
                               people_count=rec.get("people_count"),
                               note=rec.get("note", ""),
-                              source="fixture")
+                              source="fixture",
+                              door=rec.get("door", "unknown"),
+                              lights=rec.get("lights", "unknown"))
 
 
 class LiveVision:

@@ -52,6 +52,12 @@ class PropertyInfo:
     # so the handyman knows the hardware - never real codes.
     lock_note: str = ""
     water_note: str = ""
+    # Camera oversight (Play 7 extensions). switch_cameras names the
+    # exterior cameras known to lose power with the property's light
+    # switch; switch_location is the staged, guest-safe instruction
+    # line for where that switch is. Fixture wording only.
+    switch_cameras: tuple = ()
+    switch_location: str = ""
 
 
 @dataclass
@@ -111,6 +117,20 @@ class Vendor:
 
 
 @dataclass
+class WorkWindow:
+    """A scheduled worker window on a property/date: a cleaner visit
+    or a vendor call staged in the fixtures. Camera reality checks
+    use these windows to tell an expected worker from an unexpected
+    person, including at a closed/vacant property."""
+    property_id: str
+    date: str                              # ISO date the window is on
+    label: str = "Scheduled worker"
+    start: str = "00:00"                   # "HH:MM"
+    end: str = "23:59"                     # "HH:MM"
+    kind: str = "vendor"                   # cleaner | vendor | service
+
+
+@dataclass
 class CleanReport:
     """The cleaner's completion record for a property on a date, as the
     booking system of record shows it (Turno-style). A cleaner-done
@@ -160,6 +180,16 @@ class RealityContext(Protocol):
         takes it (a play must fail safe)."""
         ...
 
+    def is_closed(self, property_id: str, date: str) -> bool:
+        """True when the property is marked vacant/closed on `date`:
+        no guest is expected and any person needs an explanation."""
+        ...
+
+    def get_work_windows(self, property_id: str, date: str) -> tuple:
+        """Scheduled cleaner/vendor windows for the property on
+        `date`, beyond the same-day turnover record, if any."""
+        ...
+
 
 class FixtureContext:
     """RealityContext backed by staged data.
@@ -171,12 +201,18 @@ class FixtureContext:
       "stays": {"<property_id>|<date>": {Stay fields}},
       "clean_reports": {"<property_id>|<date>": {CleanReport fields}},
       "vendors": {vendor_id: {Vendor fields}},
+      "closed_dates": ["<property_id>|<date>", ...],
+      "work_windows": {"<property_id>|<date>": [{WorkWindow fields}]},
     }
     """
 
     def __init__(self, data: dict):
-        self._props = {pid: PropertyInfo(property_id=pid, **kw)
-                       for pid, kw in data.get("properties", {}).items()}
+        self._props = {}
+        for pid, kw in data.get("properties", {}).items():
+            kw = dict(kw)
+            if "switch_cameras" in kw:
+                kw["switch_cameras"] = tuple(kw["switch_cameras"])
+            self._props[pid] = PropertyInfo(property_id=pid, **kw)
         self._turns = {}
         for key, kw in data.get("turnovers", {}).items():
             pid, date = key.split("|", 1)
@@ -201,6 +237,16 @@ class FixtureContext:
             if "properties" in kw:
                 kw["properties"] = tuple(kw["properties"])
             self._vendors[vid] = Vendor(vendor_id=vid, **kw)
+        closed = data.get("closed_dates", [])
+        if isinstance(closed, dict):
+            closed = list(closed.keys())
+        self._closed = set(closed)
+        self._work_windows = {}
+        for key, windows in data.get("work_windows", {}).items():
+            pid, date = key.split("|", 1)
+            self._work_windows[key] = tuple(
+                WorkWindow(property_id=pid, date=date, **kw)
+                for kw in windows)
 
     def get_property(self, property_id: str) -> PropertyInfo | None:
         return self._props.get(property_id)
@@ -226,6 +272,12 @@ class FixtureContext:
                 continue
             return vendor
         return None
+
+    def is_closed(self, property_id: str, date: str) -> bool:
+        return f"{property_id}|{date}" in self._closed
+
+    def get_work_windows(self, property_id: str, date: str) -> tuple:
+        return self._work_windows.get(f"{property_id}|{date}", ())
 
     def ready_time_minutes(self, property_id: str, date: str) -> int | None:
         prop = self.get_property(property_id)
@@ -273,6 +325,12 @@ class LiveTurnoReadAdapter:
     def get_vendor(self, issue_type: str, property_id: str):
         self._stub()
 
+    def is_closed(self, property_id: str, date: str):
+        self._stub()
+
+    def get_work_windows(self, property_id: str, date: str):
+        self._stub()
+
 
 def default_fixture_data() -> dict:
     """The staged world the demo runs in. Three Lockport-style units on
@@ -290,7 +348,12 @@ def default_fixture_data() -> dict:
     The same stay is Play 4's (in-stay issues) reality: Alex is in
     residence at lockport-1n on 2026-10-29, and the vendor roster
     carries one fixture handyman covering every property and issue.
-    Check-in notes are staged instruction lines, never real codes.
+    Peter's House is additionally marked closed/vacant on 2026-10-30,
+    with one staged service window that morning, for Play 7's vacant
+    mode. The Lockport units' front-door cameras are staged as
+    switch-fed, with guest-safe switch-location lines, for the
+    camera-offline extension. Check-in notes are staged instruction
+    lines, never real codes.
     """
     return {
         "properties": {
@@ -308,7 +371,9 @@ def default_fixture_data() -> dict:
                                          "inside face of the door.",
                             "water_note": "Water shutoff is in the basement "
                                           "utility room, on the wall by "
-                                          "the water heater."},
+                                          "the water heater.",
+                            "switch_cameras": ["front-door"],
+                            "switch_location": "by the front door, inside"},
             "lockport-2n": {"name": "Studio 2N, Lockport",
                             "standard_checkin": "16:00",
                             "typical_clean_minutes": 150,
@@ -320,7 +385,10 @@ def default_fixture_data() -> dict:
                                             "too.",
                             "lock_note": "Studio door is a keypad deadbolt.",
                             "water_note": "Water shutoff is under the "
-                                          "kitchen sink cabinet."},
+                                          "kitchen sink cabinet.",
+                            "switch_cameras": ["front-door"],
+                            "switch_location": "by the studio front door, "
+                                               "inside"},
             "peters-house": {"name": "Peter's House",
                              "standard_checkin": "16:00",
                              "typical_clean_minutes": 150,
@@ -361,6 +429,12 @@ def default_fixture_data() -> dict:
                 "cleaner_id": "cleaner-jader",
                 "problem_flag": "Cracked wine glass found in the sink; "
                                 "one hand towel stained and set aside."},
+        },
+        "closed_dates": ["peters-house|2026-10-30"],
+        "work_windows": {
+            "peters-house|2026-10-30": [{
+                "label": "Fixture service visit", "start": "10:00",
+                "end": "12:00", "kind": "vendor"}],
         },
         "vendors": {
             "vendor-fixture-handyman": {
