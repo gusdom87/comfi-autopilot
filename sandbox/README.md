@@ -56,6 +56,22 @@ Endpoints:
                 "property_id": "lockport-2n", "date": "2026-10-28",
                 "kind": "post_turnover", "camera": "front-door",
                 "ts": "2026-10-28T14:15:00", "frame_id": "f7"}
+               Body for a guest lockout report (the event assembles
+               the door camera's latest frame — pinned here — and
+               its door state for the operator; nothing is sent to
+               the guest):
+               {"play": "guest_lockout", "property_id": "lockport-2n",
+                "date": "2026-10-28", "camera": "front-door",
+                "ts": "2026-10-28T15:52:00", "frame_id": "f13"}
+               Body for a guest-unsafe report (the operator gets
+               the property's latest frames, marked urgent):
+               {"play": "guest_unsafe", "property_id": "lockport-2n",
+                "date": "2026-10-28", "kind": "guest_unsafe"}
+               Body for the sunset dark-entry check:
+               {"play": "camera_sunset_check",
+                "property_id": "lockport-2n", "date": "2026-10-28",
+                "kind": "sunset_check", "camera": "front-door",
+                "ts": "2026-10-28T18:47:00", "frame_id": "f16"}
   POST /event  deliver an event to a waiting run:
                {"run_id": "...", "event": "cleaner_done",
                 "payload": {"finished_at": "1:32 PM"}}
@@ -122,6 +138,39 @@ Driving it on the page:
   flagged. "All secured" (frame f8: door closed, lights off)
   logs only. A frame that cannot settle the state flags the
   operator too.
+- Camera covered (final-list case #17): "Camera covered —
+  one-night weekend stay" uses frame f10: the classification's
+  view field reads blocked (a second strictly validated optional
+  field on the same schema), so the operator is flagged whatever
+  the scene says — and because Sam's stay at Owner's Unit 1N that
+  Friday is a single night, the notification is marked urgent.
+  A merely unclear frame never counts as covered; the view has
+  to read blocked or shifted explicitly (frame f11, via the API,
+  is the shifted variant at Studio 2N).
+- Guest lockout (case #10): "Guest lockout — person at the shut
+  door" reports a lockout at Studio 2N and pins frame f13: the
+  operator's notification carries the exact, small claim — a
+  person is at the door and the door reads shut — plus the frame
+  reference. Nothing is sent to the guest. The same play has a
+  motion-side twin: frames f12 then f13 through the camera-check
+  endpoint (two POSTs, minutes apart, person at the shut door
+  inside the arrival window) complete the dwell pattern and the
+  second run flags the operator with the stuck-at-the-door
+  reason; frame f14 (door open) breaks the pattern and logs.
+- Guest feels unsafe (case #49): "Guest feels unsafe" assembles
+  Studio 2N's latest three frames — references plus their staged
+  classifications, nothing more claimed — into one URGENT
+  operator notification. At a property with no frames on record
+  for the date (Owner's Unit 1N on 2026-10-28, via the API), the
+  notification says exactly that: the absence is the information.
+- Sunset check (case #11): "Sunset check — entry dark, second
+  night running" uses frame f16 at Studio 2N on Dana's arrival
+  day: the entry lights read off, and because the fixtures carry
+  one dark night already, the notification adds the bulb change
+  to the next turnover list. Frame f15 (Peter's House, via the
+  API) is a first dark night — flagged, no bulb line; frame f17
+  (lights on) logs only; and with no arrival that day the check
+  logs whatever it reads.
 - In-stay issue: "Guest reports a leak — Owner's Unit 1N" runs
   Play 4 against the mid-stay fixture (Alex, in residence
   2026-10-29): the issue is extracted, the stay and the fixture

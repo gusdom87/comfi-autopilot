@@ -190,6 +190,19 @@ class RealityContext(Protocol):
         `date`, beyond the same-day turnover record, if any."""
         ...
 
+    def dark_nights(self, property_id: str) -> int:
+        """How many consecutive arrival-day sunset checks in a row
+        have found this property's entry dark (Play 7 case #11).
+        Zero means the last counted check found the lights on, or
+        no dark night has been counted yet."""
+        ...
+
+    def note_dark_night(self, property_id: str, dark: bool) -> int:
+        """Record one sunset check's entry-lights read for the
+        property: dark extends the consecutive-dark streak by one,
+        lit resets it to zero. Returns the streak after this read."""
+        ...
+
 
 class FixtureContext:
     """RealityContext backed by staged data.
@@ -203,6 +216,7 @@ class FixtureContext:
       "vendors": {vendor_id: {Vendor fields}},
       "closed_dates": ["<property_id>|<date>", ...],
       "work_windows": {"<property_id>|<date>": [{WorkWindow fields}]},
+      "dark_nights": {property_id: consecutive dark entry nights},
     }
     """
 
@@ -247,6 +261,8 @@ class FixtureContext:
             self._work_windows[key] = tuple(
                 WorkWindow(property_id=pid, date=date, **kw)
                 for kw in windows)
+        self._dark_nights = {str(pid): int(n) for pid, n
+                             in data.get("dark_nights", {}).items()}
 
     def get_property(self, property_id: str) -> PropertyInfo | None:
         return self._props.get(property_id)
@@ -278,6 +294,14 @@ class FixtureContext:
 
     def get_work_windows(self, property_id: str, date: str) -> tuple:
         return self._work_windows.get(f"{property_id}|{date}", ())
+
+    def dark_nights(self, property_id: str) -> int:
+        return self._dark_nights.get(property_id, 0)
+
+    def note_dark_night(self, property_id: str, dark: bool) -> int:
+        streak = self._dark_nights.get(property_id, 0) + 1 if dark else 0
+        self._dark_nights[property_id] = streak
+        return streak
 
     def ready_time_minutes(self, property_id: str, date: str) -> int | None:
         prop = self.get_property(property_id)
@@ -331,6 +355,12 @@ class LiveTurnoReadAdapter:
     def get_work_windows(self, property_id: str, date: str):
         self._stub()
 
+    def dark_nights(self, property_id: str):
+        self._stub()
+
+    def note_dark_night(self, property_id: str, dark: bool):
+        self._stub()
+
 
 def default_fixture_data() -> dict:
     """The staged world the demo runs in. Three Lockport-style units on
@@ -354,6 +384,13 @@ def default_fixture_data() -> dict:
     switch-fed, with guest-safe switch-location lines, for the
     camera-offline extension. Check-in notes are staged instruction
     lines, never real codes.
+    The final-list camera batch adds: Sam's one-night weekend stay
+    at lockport-1n on 2026-10-30 (a Friday), the covered-camera
+    frame's stay reality (vision.STAGED_FRAMES f10); and a staged
+    dark-entry streak — Studio 2N carries one consecutive dark
+    night already, so its 2026-10-28 sunset check (frame f16) is
+    the second night running, which is what puts a bulb change on
+    the next turnover list (case #11).
     """
     return {
         "properties": {
@@ -419,6 +456,10 @@ def default_fixture_data() -> dict:
                 "guest_name": "Alex", "guest_count": 4,
                 "arrival_date": "2026-10-27",
                 "departure_date": "2026-10-30"},
+            "lockport-1n|2026-10-30": {
+                "guest_name": "Sam", "guest_count": 2,
+                "arrival_date": "2026-10-30",
+                "departure_date": "2026-10-31"},
         },
         "clean_reports": {
             "lockport-2n|2026-10-28": {
@@ -431,6 +472,7 @@ def default_fixture_data() -> dict:
                                 "one hand towel stained and set aside."},
         },
         "closed_dates": ["peters-house|2026-10-30"],
+        "dark_nights": {"lockport-2n": 1},
         "work_windows": {
             "peters-house|2026-10-30": [{
                 "label": "Fixture service visit", "start": "10:00",

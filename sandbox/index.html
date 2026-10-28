@@ -117,13 +117,25 @@
      operator's chosen wording — and a house marked <strong>closed</strong> flips
      the expectation, so any person flags the operator with the frame still
      attached. A post-turnover check reads the door and lights state of the
-     emptied home. The frames are staged metadata, not real photos.</p>
+     emptied home. The final-list batch rides the same rails: a
+     <strong>covered or turned</strong> camera flags the operator whatever the
+     scene (urgent on a one-night weekend stay), a person stuck at a shut door
+     across two frames flags the operator with the door state, a
+     <strong>lockout report</strong> hands the operator the latest door frame,
+     a guest who <strong>feels unsafe</strong> gets the latest frames to the
+     operator urgently, and a <strong>sunset check</strong> reads the entry
+     lights before an arriving guest does. The frames are staged metadata,
+     not real photos.</p>
   <button class="bigbtn" id="cc-guest">Camera motion — guest arriving, Studio 2N</button>
   <button class="bigbtn" id="cc-gathering">Camera motion — large gathering, Owner's Unit 1N</button>
   <button class="bigbtn" id="cc-offline">Camera offline — switch flipped during a stay, Owner's Unit 1N</button>
   <button class="bigbtn" id="cc-vacant">Camera motion — person at the closed house, Peter's House</button>
   <button class="bigbtn" id="cc-state-open">Post-turnover check — door open, Studio 2N</button>
   <button class="bigbtn" id="cc-state-ok">Post-turnover check — all secured, Studio 2N</button>
+  <button class="bigbtn" id="cc-covered">Camera covered — one-night weekend stay, Owner's Unit 1N</button>
+  <button class="bigbtn" id="cc-lockout">Guest lockout — person at the shut door, Studio 2N</button>
+  <button class="bigbtn" id="cc-unsafe">Guest feels unsafe — latest frames to the operator, Studio 2N</button>
+  <button class="bigbtn" id="cc-dark">Sunset check — entry dark, second night running, Studio 2N</button>
   <div class="timeline" id="cc-timeline"></div>
 
   <h3>Play: in-stay issue → handyman dispatch</h3>
@@ -194,9 +206,16 @@
         (r.property ? ' · ' + esc(r.property) : '') + '</div>';
       if (r.scene) out += '<div>Frame classified: <strong>' + esc(r.scene) + '</strong>' +
         (r.people_count !== undefined && r.people_count !== null ? ' · people: ' + r.people_count : '') +
+        (r.view && r.view !== 'unknown' ? ' · view: <strong>' + esc(r.view) + '</strong>' : '') +
         (r.note ? ' · &ldquo;' + esc(r.note) + '&rdquo;' : '') +
         (r.route ? ' · route: <strong>' + esc(r.route) + '</strong>' : '') +
         (r.reason ? ' · ' + esc(r.reason) : '') + '</div>';
+      if (r.frames) out += '<div>Frames assembled: <strong>' +
+        (r.frames.length ? r.frames.map(esc).join(', ') : 'none on record') + '</strong>' +
+        (r.urgent ? ' · <span class="err">URGENT</span>' : '') + '</div>';
+      if (r.second_night !== undefined) out += '<div>Dark-entry streak: <strong>' +
+        r.dark_streak + ' night(s)</strong>' +
+        (r.second_night ? ' · <span class="err">second night running — bulb change on the next turnover list</span>' : '') + '</div>';
       if (r.door !== undefined) out += '<div>Door: <strong>' + esc(r.door) + '</strong> · lights: <strong>' +
         esc(r.lights) + '</strong></div>';
       if (r.switch_fed !== undefined) out += '<div>Camera switch-fed: <strong>' +
@@ -301,6 +320,21 @@
       { property_id: 'lockport-2n', date: '2026-10-28', kind: 'post_turnover',
         camera: 'front-door', ts: '2026-10-28T14:20:00', frame_id: 'f8' },
       'camera_post_turnover');
+    document.getElementById('cc-covered').onclick = ccFire(
+      { property_id: 'lockport-1n', date: '2026-10-30', camera: 'front-door',
+        ts: '2026-10-30T21:05:00', frame_id: 'f10' });
+    document.getElementById('cc-lockout').onclick = ccFire(
+      { property_id: 'lockport-2n', date: '2026-10-28', camera: 'front-door',
+        ts: '2026-10-28T15:52:00', frame_id: 'f13' },
+      'guest_lockout');
+    document.getElementById('cc-unsafe').onclick = ccFire(
+      { property_id: 'lockport-2n', date: '2026-10-28',
+        kind: 'guest_unsafe' },
+      'guest_unsafe');
+    document.getElementById('cc-dark').onclick = ccFire(
+      { property_id: 'lockport-2n', date: '2026-10-28', kind: 'sunset_check',
+        camera: 'front-door', ts: '2026-10-28T18:47:00', frame_id: 'f16' },
+      'camera_sunset_check');
 
     let ihRunId = null;
     const ihRender = run => {

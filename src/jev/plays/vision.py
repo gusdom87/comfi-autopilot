@@ -16,11 +16,12 @@ Two implementations behind one small interface, classify(frame_id)
 A classification is strict JSON: {"scene": one of SCENES,
 "people_count": int | null, "note": short string}. It may also carry
 the optional post-turnover state fields "door" (open | closed |
-unknown) and "lights" (on | off | unknown); when present they are
-validated just as strictly, and when absent they default to
-"unknown". Anything that does not parse to exactly that shape
-returns None, and callers treat None exactly like an "unclear"
-frame: fail safe to a human.
+unknown) and "lights" (on | off | unknown), and the optional
+camera-health field "view" (normal | blocked | shifted | unknown);
+when present they are validated just as strictly, and when absent
+they default to "unknown". Anything that does not parse to exactly
+that shape returns None, and callers treat None exactly like an
+"unclear" frame: fail safe to a human.
 """
 import base64
 import json
@@ -44,6 +45,7 @@ SCENES = (
 
 DOOR_STATES = ("open", "closed", "unknown")
 LIGHT_STATES = ("on", "off", "unknown")
+VIEW_STATES = ("normal", "blocked", "shifted", "unknown")
 
 VISION_SYSTEM = (
     "You classify a single still frame from an exterior camera at a "
@@ -52,12 +54,19 @@ VISION_SYSTEM = (
     '"large_gathering", "vehicle", "animal", "nothing_notable", '
     '"unclear"], "people_count": integer or null, "note": one short '
     'sentence, "door": one of ["open", "closed", "unknown"], '
-    '"lights": one of ["on", "off", "unknown"]}. You cannot identify '
-    "who a person is — judge only the kind of scene. Judge the door "
-    "and lights state only when a door or the home's lights are "
-    'actually visible; otherwise report "unknown" for that field. '
-    "If the frame is too dark, blurry, or obstructed to judge, the "
-    'scene is "unclear".'
+    '"lights": one of ["on", "off", "unknown"], '
+    '"view": one of ["normal", "blocked", "shifted", "unknown"]}. '
+    "You cannot identify who a person is — judge only the kind of "
+    "scene. Judge the door and lights state only when a door or the "
+    'home\'s lights are actually visible; otherwise report "unknown" '
+    "for that field. Judge the view state from the frame itself: "
+    '"blocked" when the lens appears covered or obstructed (tape, '
+    'cloth, an object over it), "shifted" when the frame looks as '
+    "if the camera has been turned or knocked (pointing at the "
+    'ground, the sky, or a wall instead of the usual scene), '
+    '"normal" when neither is the case, and "unknown" when the '
+    "frame does not let you judge. If the frame is too dark, blurry, "
+    'or obstructed to judge, the scene is "unclear".'
 )
 
 
@@ -73,6 +82,12 @@ class Classification:
     # the staged record) actually settles it.
     door: str = "unknown"           # one of DOOR_STATES
     lights: str = "unknown"         # one of LIGHT_STATES
+    # Camera health (Play 7 final-list case #17): whether the frame
+    # shows the camera itself compromised — the lens blocked, or the
+    # view shifted from where the camera points. "unknown" unless
+    # the frame (or the staged record) actually settles it; a merely
+    # unclear frame never counts as blocked or shifted.
+    view: str = "unknown"           # one of VIEW_STATES
 
 
 def parse_classification(text: str, source: str = "live",
@@ -98,10 +113,13 @@ def parse_classification(text: str, source: str = "live",
         lights = obj.get("lights", "unknown")
         if door not in DOOR_STATES or lights not in LIGHT_STATES:
             return None
+        view = obj.get("view", "unknown")
+        if view not in VIEW_STATES:
+            return None
         return Classification(scene=scene, people_count=people,
                               note=str(obj.get("note", "")),
                               source=source, cost_usd=cost_usd,
-                              door=door, lights=lights)
+                              door=door, lights=lights, view=view)
     except (ValueError, KeyError, TypeError):
         return None
 
@@ -202,7 +220,136 @@ STAGED_FRAMES: dict[str, dict] = {
             "note": "One person still at the front door as the "
                     "cleaning window opens."},
     },
+    # Final-list batch (cases #10, #11, #17): frames staged for the
+    # covered/shifted view reads, the stuck-at-the-door dwell pair,
+    # and the sunset dark-entry checks.
+    "f10": {
+        "property_id": "lockport-1n", "date": "2026-10-30",
+        "camera": "front-door", "ts": "2026-10-30T21:05:00",
+        "description": "The frame is a flat dark blur: something is "
+                       "over the lens on a Friday night, during a "
+                       "one-night weekend stay at the unit.",
+        "classification": {
+            "scene": "nothing_notable", "people_count": 0,
+            "note": "The frame is a flat dark blur; the lens "
+                    "appears covered.",
+            "view": "blocked"},
+    },
+    "f11": {
+        "property_id": "lockport-2n", "date": "2026-10-28",
+        "camera": "front-door", "ts": "2026-10-28T12:20:00",
+        "description": "The camera now points down at the steps "
+                       "instead of the door and driveway; a car is "
+                       "partly visible at the frame's edge.",
+        "classification": {
+            "scene": "vehicle", "people_count": None,
+            "note": "The frame points down at the steps; the "
+                    "camera appears to have been turned.",
+            "view": "shifted"},
+    },
+    "f12": {
+        "property_id": "lockport-2n", "date": "2026-10-28",
+        "camera": "front-door", "ts": "2026-10-28T15:37:00",
+        "description": "One person standing at the studio door "
+                       "inside the arrival window; the door is shut.",
+        "classification": {
+            "scene": "expected_guest", "people_count": 1,
+            "note": "One person standing at the studio door.",
+            "door": "closed"},
+    },
+    "f13": {
+        "property_id": "lockport-2n", "date": "2026-10-28",
+        "camera": "front-door", "ts": "2026-10-28T15:44:00",
+        "description": "Seven minutes later the same person is "
+                       "still at the studio door, and the door is "
+                       "still shut — the stuck-at-the-door pattern.",
+        "classification": {
+            "scene": "expected_guest", "people_count": 1,
+            "note": "The person is still at the studio door; the "
+                    "door is still shut.",
+            "door": "closed"},
+    },
+    "f14": {
+        "property_id": "lockport-2n", "date": "2026-10-28",
+        "camera": "front-door", "ts": "2026-10-28T15:51:00",
+        "description": "Minutes later the door is open and the "
+                       "guests are bringing their bags in — nobody "
+                       "is stuck anymore.",
+        "classification": {
+            "scene": "expected_guest", "people_count": 2,
+            "note": "Guests at the open door, bringing bags in.",
+            "door": "open"},
+    },
+    "f15": {
+        "property_id": "peters-house", "date": "2026-10-28",
+        "camera": "front-door", "ts": "2026-10-28T18:52:00",
+        "description": "Sunset check on Marcus's arrival day: the "
+                       "entry is dark, no lights on at the front of "
+                       "the house.",
+        "classification": {
+            "scene": "nothing_notable", "people_count": 0,
+            "note": "Entry dark after sunset; no lights on at "
+                    "the front.",
+            "lights": "off"},
+    },
+    "f16": {
+        "property_id": "lockport-2n", "date": "2026-10-28",
+        "camera": "front-door", "ts": "2026-10-28T18:47:00",
+        "description": "Sunset check on Dana's arrival day: the "
+                       "studio entry is dark — and the fixtures "
+                       "carry one dark night already, so this is "
+                       "the second night running.",
+        "classification": {
+            "scene": "nothing_notable", "people_count": 0,
+            "note": "The studio entry is dark after sunset.",
+            "lights": "off"},
+    },
+    "f17": {
+        "property_id": "peters-house", "date": "2026-10-28",
+        "camera": "front-door", "ts": "2026-10-28T18:55:00",
+        "description": "Sunset check variant: the porch light is "
+                       "on at the entry — the home is lit for the "
+                       "arriving guest.",
+        "classification": {
+            "scene": "nothing_notable", "people_count": 0,
+            "note": "Porch light on at the entry.",
+            "lights": "on"},
+    },
+    "f18": {
+        "property_id": "peters-house", "date": "2026-10-28",
+        "camera": "front-door", "ts": "2026-10-28T16:08:00",
+        "description": "A person at the front door with a bag "
+                       "beside them on Marcus's arrival day; the "
+                       "door is shut — the frame a lockout report "
+                       "would be checked against.",
+        "classification": {
+            "scene": "unknown_person", "people_count": 1,
+            "note": "One person at the front door, bag beside "
+                    "them.",
+            "door": "closed"},
+    },
 }
+
+
+def frames_for(property_id: str, date: str | None = None,
+               camera: str | None = None) -> list[dict]:
+    """The staged frame records on file for a property (optionally
+    one date, optionally one camera), oldest first. Each record is
+    the STAGED_FRAMES entry plus its frame_id. This is the staged
+    stand-in for a real camera system's frame store: the plays that
+    assemble "the latest frames" (guest lockout, guest feels unsafe)
+    read from here, never from the live API."""
+    out = []
+    for fid, rec in STAGED_FRAMES.items():
+        if rec["property_id"] != property_id:
+            continue
+        if date is not None and rec["date"] != date:
+            continue
+        if camera is not None and rec["camera"] != camera:
+            continue
+        out.append({"frame_id": fid, **rec})
+    out.sort(key=lambda r: r["ts"])
+    return out
 
 
 class FixtureVision:
@@ -226,7 +373,8 @@ class FixtureVision:
                               note=rec.get("note", ""),
                               source="fixture",
                               door=rec.get("door", "unknown"),
-                              lights=rec.get("lights", "unknown"))
+                              lights=rec.get("lights", "unknown"),
+                              view=rec.get("view", "unknown"))
 
 
 class LiveVision:
