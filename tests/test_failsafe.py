@@ -11,6 +11,9 @@ def test_no_key_means_no_decision():
     assert client.complete("muse-spark", "s", "u") is None
 
 
-def test_default_policy_fails_safe_to_confirm():
+def test_default_policy_fails_safe_to_confirm(monkeypatch):
+    # Pinned to no key: with a real key exported this would make a
+    # live, paid call instead of testing the fail-safe.
+    monkeypatch.delenv("META_MODEL_API_KEY", raising=False)
     d = decide("escalate", "The lock code is not working", {})
     assert d.category is Category.CONFIRM

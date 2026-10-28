@@ -6,20 +6,20 @@ Built Oct 26 to Nov 4, 2026 for the Meta Global AI Developer Hackathon (Indie tr
 
 ## What it is
 
-Comfi Autopilot connects to Hospitable, the property-management system the bookings already live in, and works from the real operating data: every reservation, check-in time, and cleaning on the calendar. On top of that data it coordinates the work of the business end to end — the guest asking, the cleaner finishing, the issue mid-stay — as one operation instead of a pile of separate messages. Every action it might take is gated by graduated autonomy: closing noise is a low right, messaging a guest or a cleaner is a middle right, and charging a guest is the highest right, human-approved until earned.
+Comfi Autopilot is designed to connect to Hospitable, the property-management system the bookings already live in, and to work from the real operating data: every reservation, check-in time, and cleaning on the calendar. This build runs on a staged fixture world in that data model (no live Hospitable or Turno connection). On top of that data it coordinates the work of the business end to end — the guest asking, the cleaner finishing, the issue mid-stay — as one operation instead of a pile of separate messages. Every action it might take is gated by graduated autonomy: closing noise is a low right, messaging a guest or a cleaner is a middle right, and charging a guest is the highest right, human-approved until earned.
 
 What it operates:
 
-- Guest communication, around the clock: every incoming message is read, sorted by urgency, and answered with a drafted reply in the operator's voice.
+- Guest communication, around the clock: every incoming message is read and sorted by urgency, and the urgent ones (Act) get a drafted reply in the operator's voice.
 - Cleaning turnovers: cleanings lined up between one guest leaving and the next arriving, with the arriving guest told the moment their place is ready.
-- Early check-in: a guest's request is checked against the same-day turnover reality; when it works, the guest is let in early and the fee step is held for approval.
+- Early check-in: a guest's request is checked against the same-day turnover reality; when it works, a yes reply is drafted and held for approval along with the fee step.
 - In-stay issues: problems during a stay, from a door that will not unlock to getting a handyman dispatched.
 - Special requests: handled against the same calendar and turnover reality as everything else.
 - Exterior-camera oversight: the outside of the home is watched, so someone is looking out for the property even when the operator is not there.
 
 ## How Jev fits
 
-Jev is not this product. Jev is an existing decision tool by TypeSafe AI that the operator uses inside Comfi Autopilot to make the urgency call on each message. The operator implemented a triage layer on top of it and taught it his operation's judgment by hand-labeling roughly 300 real guest messages himself. Comfi Autopilot is everything around that decision: the connection to the booking data, the plays that turn a decision into coordinated work, and the autonomy ladder that decides what the system may do with it.
+Jev is not this product. The urgency call on each message is made by the triage layer in this repo, a hackathon-built port of the operator's Jev pipeline (TypeSafe AI) to Muse Spark/Wonder; Jev's original tool, the hand-labeled dataset, and the Oct 7–14 pilot are pre-existing. The operator taught the triage layer his operation's judgment by hand-labeling roughly 300 real guest messages himself. Comfi Autopilot is everything around that decision: the connection to the booking data, the plays that turn a decision into coordinated work, and the autonomy ladder that decides what the system may do with it.
 
 ## Graduated autonomy
 

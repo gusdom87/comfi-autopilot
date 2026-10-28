@@ -33,7 +33,7 @@ def test_extract_times():
 
 
 def test_grant_when_no_turnover():
-    run = _run(_engine(), "lockport-1n")
+    run = _run(_engine(), "cedar-1a")
     assert run.status == "completed" and run.data["outcome"] == "grant"
     reply = _step(run, "guest_reply")
     assert "1:00 PM" in reply.result["draft"]
@@ -48,16 +48,16 @@ def test_grant_when_no_turnover():
 def test_conditional_pings_cleaner_and_waits(tmp_path):
     log = str(tmp_path / "runs.jsonl")
     engine = _engine(log_path=log)
-    run = _run(engine, "lockport-2n")
+    run = _run(engine, "cedar-2a")
     assert run.data["outcome"] == "conditional"
     assert run.status == "waiting"
     ping = _step(run, "cleaner_ping")
-    assert ping.result["cleaner"] == "Cristina"
+    assert ping.result["cleaner"] == "Lena"
     assert "reply done here" in ping.result["draft"]
     assert _step(run, "wait_cleaner_done").status == "waiting"
 
     engine.handle_event(run, "cleaner_done",
-                        {"cleaner_id": "cleaner-cristina",
+                        {"cleaner_id": "cleaner-lena",
                          "finished_at": "1:05 PM"})
     assert run.status == "completed"
     assert _step(run, "wait_cleaner_done").status == "done"
@@ -72,7 +72,7 @@ def test_conditional_pings_cleaner_and_waits(tmp_path):
 
 
 def test_deny_is_honest_and_charges_nothing():
-    run = _run(_engine(), "peters-house")
+    run = _run(_engine(), "maple-house")
     assert run.status == "completed" and run.data["outcome"] == "deny"
     reply = _step(run, "guest_reply")
     assert "will not be ready by 1:00 PM" in reply.result["draft"]
@@ -82,7 +82,7 @@ def test_deny_is_honest_and_charges_nothing():
 
 def test_fee_comes_from_config():
     run = _run(_engine(config=PlaysConfig(early_checkin_fee_usd=40.0)),
-               "lockport-1n")
+               "cedar-1a")
     charge = _step(run, "early_checkin_charge")
     assert charge.result["charge"]["amount_usd"] == 40.0
     assert "$40" in _step(run, "guest_reply").result["draft"]
@@ -92,7 +92,7 @@ def test_earned_guest_right_sends_simulated():
     ledger = {"categories": {"message_guest": {
         "decisive_n": 30, "decisive_accuracy": 0.96,
         "high_conf_accuracy": 0.99}}}
-    run = _run(_engine(ledger=ledger), "lockport-1n")
+    run = _run(_engine(ledger=ledger), "cedar-1a")
     reply = _step(run, "guest_reply")
     assert reply.required_right == "send_with_log"
     assert reply.status == "done"
@@ -103,7 +103,7 @@ def test_earned_guest_right_sends_simulated():
 
 
 def test_relative_request_uses_standard_checkin():
-    run = _run(_engine(), "lockport-1n", "Can we get in an hour early?")
+    run = _run(_engine(), "cedar-1a", "Can we get in an hour early?")
     assert run.data["requested_minutes"] == 900
     assert run.data["outcome"] == "grant"
 
@@ -112,7 +112,7 @@ def test_unusable_time_fails_safe():
     play = get("early_checkin")
     run = _engine().start(play, Decision(Category.ACT, 0.9),
                           "We would love an early check-in please!",
-                          "lockport-1n", DATE)
+                          "cedar-1a", DATE)
     # Trigger needs a cue + "early"; extraction then fails on no time.
     assert run.status == "held_for_human"
     assert _step(run, "guest_reply").status == "pending"

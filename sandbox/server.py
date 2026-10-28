@@ -15,9 +15,10 @@ from jev.plays import FixtureContext, PlayEngine, default_fixture_data  # noqa: 
 from jev.plays import get as get_play  # noqa: E402
 from jev.plays.camera_check import (  # noqa: E402
     handle_camera_event, handle_camera_offline_event,
-    handle_camera_online_event, handle_guest_lockout_event,
-    handle_guest_unsafe_event, handle_post_turnover_event,
-    handle_sunset_check_event)
+    handle_camera_online_event, handle_camera_upkeep_event,
+    handle_guest_lockout_event, handle_guest_unsafe_event,
+    handle_morning_check_event, handle_offline_burst,
+    handle_post_turnover_event, handle_sunset_check_event)
 from jev.plays.cleaner_done import handle_cleaner_done_event  # noqa: E402
 from jev.tiers import decide as _decide  # noqa: E402
 from jev.types import FAIL_SAFE  # noqa: E402
@@ -40,7 +41,7 @@ def handle_triage(payload: dict, decide_fn=_decide, ledger_path: str = "") -> di
         "reason": d.reason,
         "tier_path": d.tier_path,
         "cost_usd": round(d.cost_usd, 6),
-        "autonomy_right": right_for(d.category.value, ledger),
+        "autonomy_right": right_for(d.category.value, ledger, d.confidence),
         "failsafe": d.reason == FAIL_SAFE.reason,
     }
 
@@ -119,6 +120,46 @@ def handle_play(payload: dict, engine=ENGINE, runs=None) -> dict:
             return {"error": str(exc)}
         runs[run.run_id] = run
         return run.to_dict()
+    if play_name == "camera_morning_check":
+        event = {k: str(payload.get(k, "")).strip()
+                 for k in ("property_id", "date", "kind", "camera",
+                           "ts", "frame_id")}
+        try:
+            run = handle_morning_check_event(engine, event)
+        except ValueError as exc:
+            return {"error": str(exc)}
+        runs[run.run_id] = run
+        return run.to_dict()
+    if play_name == "camera_upkeep":
+        event = {k: str(payload.get(k, "")).strip()
+                 for k in ("date", "kind")}
+        try:
+            run = handle_camera_upkeep_event(engine, event)
+        except ValueError as exc:
+            return {"error": str(exc)}
+        runs[run.run_id] = run
+        return run.to_dict()
+    if play_name == "camera_outage_cluster":
+        # A burst of camera_offline events: each runs the ordinary
+        # offline play, the correlation layer evaluates the burst,
+        # and a formed cluster adds its single area-outage run.
+        events = payload.get("events")
+        if not isinstance(events, list) or not events:
+            return {"error": "camera_outage_cluster needs a "
+                             "non-empty events list"}
+        try:
+            out = handle_offline_burst(engine, events)
+        except ValueError as exc:
+            return {"error": str(exc)}
+        for r in out["runs"] + out["cluster_runs"]:
+            runs[r.run_id] = r
+        result = {"runs": [r.to_dict() for r in out["runs"]],
+                  "cluster": out["cluster"], "cluster_run": None,
+                  "clusters": out["clusters"],
+                  "cluster_runs": [r.to_dict() for r in out["cluster_runs"]]}
+        if out["cluster_run"] is not None:
+            result["cluster_run"] = out["cluster_run"].to_dict()
+        return result
     if play_name == "cleaner_done":
         event = {k: str(payload.get(k, "")).strip()
                  for k in ("property_id", "date", "cleaner_id",

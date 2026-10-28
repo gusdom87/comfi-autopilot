@@ -5,7 +5,7 @@ os.environ["JEV_SPEND_STATE"] = os.path.join(os.path.dirname(__file__), "spend-t
 from jev.autonomy import right_for
 from jev.parse import parse_decision
 from jev.tiers import decide
-from jev.types import Category
+from jev.types import Category, FAIL_SAFE
 
 
 class FakeClient:
@@ -51,6 +51,19 @@ def test_dead_client_fails_safe():
     assert d.category is Category.CONFIRM and d.confidence == 0.0
 
 
+def test_escalation_failure_fails_safe_not_fast_verdict():
+    # Spark is below the threshold and Wonder fails: the too-uncertain
+    # fast verdict is not handed back as the decision.
+    c = FakeClient([verdict("Ignore", 0.3), None])
+    d = decide("escalate", "ok thanks", {}, client=c)
+    assert c.calls == 2
+    assert d.category is Category.CONFIRM and d.confidence == 0.0
+    assert d.reason == FAIL_SAFE.reason
+    assert "escalation failed" in d.tier_path
+    assert d.cost_usd > 0          # the fast call's spend is still reported
+    assert FAIL_SAFE.tier_path == "" and FAIL_SAFE.cost_usd == 0.0
+
+
 def test_autonomy_defaults_and_earns():
     assert right_for("Act", {}) == "approve_first"
     led = {"categories": {"Act": {"decisive_n": 30, "decisive_accuracy": 0.96, "high_conf_accuracy": 0.99}}}
@@ -58,3 +71,12 @@ def test_autonomy_defaults_and_earns():
     led["categories"]["Act"]["decisive_n"] = 80
     led["categories"]["Act"]["decisive_accuracy"] = 0.98
     assert right_for("Act", led) == "send_with_spotcheck"
+
+
+def test_autonomy_floor_holds_low_confidence_decisions():
+    led = {"categories": {"Ignore": {"decisive_n": 80, "decisive_accuracy": 0.98, "high_conf_accuracy": 0.99}}}
+    # An earned right never covers a decision below the 0.85 floor.
+    assert right_for("Ignore", led, 0.30) == "approve_first"
+    assert right_for("Ignore", led, 0.84) == "approve_first"
+    assert right_for("Ignore", led, 0.85) == "send_with_spotcheck"
+    assert right_for("Ignore", led) == "send_with_spotcheck"

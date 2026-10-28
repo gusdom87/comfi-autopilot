@@ -2,7 +2,7 @@
 
 Four workstreams:
 1. Core port: triage pipeline on the Meta Model API (Spark = fast triage,
-   Wonder = reasoning and drafts), live on one owned Lockport property,
+   Wonder = reasoning and drafts), live on one owned Cedar Hollow property,
    fail-safe default = Confirm on any failure.
 2. Eval harness + confidence ledger: ablation across tiering policies,
    scored against operator-labeled ground truth.

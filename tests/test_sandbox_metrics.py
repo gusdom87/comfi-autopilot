@@ -19,6 +19,18 @@ def test_sandbox_triage_shape_and_failsafe():
     html = open(os.path.join(ROOT, "sandbox", "index.html")).read()
     assert html.count("data-msg") == 4 and "pre-existing — Jev, the decision model by TypeSafe AI" in html
 
+def test_sandbox_triage_low_confidence_gets_approve_first(tmp_path):
+    srv = load_mod("sandbox_server", "sandbox/server.py")
+    from jev.types import Decision, Category
+    ledger = tmp_path / "ledger.json"
+    ledger.write_text('{"categories": {"Ignore": {"decisive_n": 30, "decisive_accuracy": 0.96, "high_conf_accuracy": 0.99}}}')
+    low = Decision(Category.IGNORE, 0.3, reason="r", tier_path="m")
+    out = srv.handle_triage({"message": "ok"}, decide_fn=lambda p, m, c: low, ledger_path=str(ledger))
+    assert out["autonomy_right"] == "approve_first"
+    high = Decision(Category.IGNORE, 0.95, reason="r", tier_path="m")
+    out = srv.handle_triage({"message": "ok"}, decide_fn=lambda p, m, c: high, ledger_path=str(ledger))
+    assert out["autonomy_right"] == "send_with_log"
+
 def test_metrics_math(tmp_path):
     met = load_mod("outcome_metrics", "metrics/outcome_metrics.py")
     path = tmp_path / "w.csv"

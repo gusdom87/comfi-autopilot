@@ -11,9 +11,11 @@ Step kinds:
   wait     - park the run until an event arrives (e.g. cleaner_done),
              then resume with the follow-up steps.
 
-Gating reuses jev.autonomy.right_for unchanged. The ladder's ledger
-carries per-key stats under "categories"; triage categories live there
-today, and play action keys live there the same way. Stakes:
+Gating reuses jev.autonomy.right_for; when a run carries a
+triage decision, that decision's confidence goes through the ladder's
+per-decision floor. The ladder's ledger carries per-key stats under
+"categories"; triage categories live there today, and play action keys
+live there the same way. Stakes:
 
   auto_close       low      closing noise, logging
   message_guest    middle   sending to a guest
@@ -202,7 +204,12 @@ class PlayEngine:
                 run.cursor += 1
                 continue
             if step.kind == "action":
-                step.required_right = right_for(step.action_key, self.ledger)
+                # A run started from a triage decision carries that
+                # decision's confidence through the per-decision floor.
+                confidence = run.decision.confidence \
+                    if run.decision is not None else None
+                step.required_right = right_for(step.action_key, self.ledger,
+                                                confidence)
                 step.disposition = "execute" if step.required_right in (P2, P3) \
                     else "hold"
                 self._log(run, "gate", step=step.name,

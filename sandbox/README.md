@@ -1,10 +1,14 @@
 # Comfi Autopilot — judge sandbox
 The demo page for Comfi Autopilot, an autonomous operations system for
-short-term rentals connected to Hospitable (guest communication, cleaning
-turnovers, in-stay issues, handyman dispatch, special requests, and
-exterior-camera oversight). The urgency decisions inside it are made by
-Jev, an existing decision tool by TypeSafe AI that the operator runs as a
-component of the system; Comfi Autopilot is the product on this page.
+short-term rentals (guest communication, cleaning turnovers, in-stay
+issues, handyman dispatch, special requests, and exterior-camera
+oversight), designed to connect to Hospitable; this build runs on a
+staged fixture world (no live Hospitable or Turno connection). The
+urgency decisions inside it are made by the triage layer in this repo, a
+hackathon-built port of the operator's Jev pipeline (TypeSafe AI) to Muse
+Spark/Wonder; Jev's original tool, the hand-labeled dataset, and the
+Oct 7–14 pilot are pre-existing. Comfi Autopilot is the product on this
+page.
 
 One command, no build step:
   JEV_SANDBOX_PORT=8791 python3 sandbox/server.py
@@ -33,45 +37,66 @@ the simulated channel and is labeled simulated.
 Endpoints:
   POST /play   start a run. Body for early check-in:
                {"play": "early_checkin", "message": "...",
-                "property_id": "lockport-2n", "date": "2026-10-28"}
+                "property_id": "cedar-2a", "date": "2026-10-28"}
                Body for cleaner-done (the event is the trigger):
-               {"play": "cleaner_done", "property_id": "lockport-2n",
-                "date": "2026-10-28", "cleaner_id": "cleaner-cristina",
+               {"play": "cleaner_done", "property_id": "cedar-2a",
+                "date": "2026-10-28", "cleaner_id": "cleaner-lena",
                 "finished_at": "1:32 PM"}
                Body for camera check (the camera event is the trigger):
-               {"play": "camera_check", "property_id": "lockport-1n",
+               {"play": "camera_check", "property_id": "cedar-1a",
                 "date": "2026-10-29", "camera": "backyard",
                 "ts": "2026-10-29T21:48:00", "frame_id": "f3"}
                Body for in-stay issue (a guest message, like early
                check-in; the play extracts the issue itself):
                {"play": "in_stay_issue", "message": "...",
-                "property_id": "lockport-1n", "date": "2026-10-29"}
+                "property_id": "cedar-1a", "date": "2026-10-29"}
                Body for camera offline (the switch play; mention is
                the wording variant, lights_and_camera | lights_only):
-               {"play": "camera_offline", "property_id": "lockport-1n",
+               {"play": "camera_offline", "property_id": "cedar-1a",
                 "date": "2026-10-29", "camera": "front-door",
                 "mention": "lights_and_camera"}
                Body for the post-turnover state check:
                {"play": "camera_post_turnover",
-                "property_id": "lockport-2n", "date": "2026-10-28",
+                "property_id": "cedar-2a", "date": "2026-10-28",
                 "kind": "post_turnover", "camera": "front-door",
                 "ts": "2026-10-28T14:15:00", "frame_id": "f7"}
                Body for a guest lockout report (the event assembles
                the door camera's latest frame — pinned here — and
                its door state for the operator; nothing is sent to
                the guest):
-               {"play": "guest_lockout", "property_id": "lockport-2n",
+               {"play": "guest_lockout", "property_id": "cedar-2a",
                 "date": "2026-10-28", "camera": "front-door",
                 "ts": "2026-10-28T15:52:00", "frame_id": "f13"}
                Body for a guest-unsafe report (the operator gets
                the property's latest frames, marked urgent):
-               {"play": "guest_unsafe", "property_id": "lockport-2n",
+               {"play": "guest_unsafe", "property_id": "cedar-2a",
                 "date": "2026-10-28", "kind": "guest_unsafe"}
                Body for the sunset dark-entry check:
                {"play": "camera_sunset_check",
-                "property_id": "lockport-2n", "date": "2026-10-28",
+                "property_id": "cedar-2a", "date": "2026-10-28",
                 "kind": "sunset_check", "camera": "front-door",
                 "ts": "2026-10-28T18:47:00", "frame_id": "f16"}
+               Body for the morning snow check (empty homes only):
+               {"play": "camera_morning_check",
+                "property_id": "maple-house", "date": "2026-10-29",
+                "kind": "morning_check", "camera": "front-door",
+                "ts": "2026-10-29T10:30:00", "frame_id": "f21"}
+               Body for the camera upkeep self-check (fleet-wide;
+               the run carries no single property):
+               {"play": "camera_upkeep", "date": "2026-10-28",
+                "kind": "camera_upkeep"}
+               Body for an offline burst (each event runs the
+               ordinary camera_offline play; the correlation layer
+               evaluates the burst and each formed cluster adds its
+               area-outage run to the response — cluster_run is the
+               first, cluster_runs lists every one):
+               {"play": "camera_outage_cluster", "events": [
+                 {"property_id": "cedar-1a", "date": "2026-10-29",
+                  "camera": "front-door", "ts": "2026-10-29T19:20:00"},
+                 {"property_id": "cedar-2a", "date": "2026-10-29",
+                  "camera": "front-door", "ts": "2026-10-29T19:26:00"},
+                 {"property_id": "cedar-1a", "date": "2026-10-29",
+                  "camera": "backyard", "ts": "2026-10-29T19:31:00"}]}
   POST /event  deliver an event to a waiting run:
                {"run_id": "...", "event": "cleaner_done",
                 "payload": {"finished_at": "1:32 PM"}}
@@ -87,26 +112,27 @@ Endpoints:
   GET  /run/<id>   the run's current state (same JSON /play returns).
 
 Driving it on the page:
-- Early check-in: pick Studio 2N (a 1 PM ask against a 2:00 PM ready
+- Early check-in: pick Studio 2A (a 1 PM ask against a 2:00 PM ready
   time goes conditional), press "Run the early check-in play", and
   read the timeline top to bottom: requested time extracted, reality
   checked, guest reply drafted, the $25 charge HELD at the
   highest-stakes gate, the cleaner ping HELD, and the run parked on
   the wait step. Then press "Cleaner reports done": the run wakes,
-  and the guest-ready update completes the chain. Owner's Unit 1N
-  (no turnover) shows a grant; Peter's House shows a deny.
-- Cleaner done: "Cleaner finished — Studio 2N" runs Play 3 alone:
+  and the guest-ready update completes the chain. Garden Unit 1A
+  (no turnover) shows a grant; Maple Street House shows a deny.
+- Cleaner done: "Cleaner finished — Studio 2A" runs Play 3 alone:
   the clean is verified against the record and the guest-ready send
-  is held at the message_guest gate. "Cleaner finished — Peter's
+  is held at the message_guest gate. "Cleaner finished — Maple Street
   House" uses the fixture whose cleaner flagged a problem (a cracked
   wine glass): the run ends held_for_human with the flag summarized,
   and the guest-ready step never runs — nothing is sent.
-- Camera check: "Camera motion — guest arriving, Studio 2N" runs
+- Camera check: "Camera motion — guest arriving, Studio 2A" runs
   Play 7 with staged frame f1: the frame classifies as the expected
   guest (Dana arrives that day), the run logs it through the
   auto_close gate, and nobody is notified. "Camera motion — large
-  gathering, Owner's Unit 1N" uses frame f3: eleven people on the
-  patio against a booked party of four mid-stay, so the run flags
+  gathering, Garden Unit 1A" uses frame f3: about eleven people on
+  the patio (a model estimate) against a booked party of four
+  mid-stay, so the run flags
   the OPERATOR — the notification is held at the notify_operator
   gate with its summary preserved. The motion play never messages
   a guest. Frames are staged metadata (jev.plays.vision.STAGED_FRAMES),
@@ -115,8 +141,8 @@ Driving it on the page:
   vision.py for the confirmed request shape) but the sandbox never
   uses it.
 - Camera offline (the switch play): "Camera offline — switch
-  flipped during a stay" runs the offline extension at Owner's
-  Unit 1N, where Alex is mid-stay and the front-door camera is on
+  flipped during a stay" runs the offline extension at Garden
+  Unit 1A, where Alex is mid-stay and the front-door camera is on
   the staged switch-fed list: the run drafts the camera system's
   one guest message — flip the switch by the front door back on,
   with the lights_and_camera wording shown in the step — and the
@@ -126,7 +152,7 @@ Driving it on the page:
   camera comes back before the held message executes, the run
   closes as resolved (POST /event, camera_online).
 - Vacant mode: "Camera motion — person at the closed house" uses
-  frame f5 at Peter's House on 2026-10-30, a date the fixtures
+  frame f5 at Maple Street House on 2026-10-30, a date the fixtures
   mark closed: any person notifies the operator, and the summary
   carries the frame reference with the still attached in the
   simulated channel. A worker inside a scheduled work window on
@@ -142,13 +168,13 @@ Driving it on the page:
   one-night weekend stay" uses frame f10: the classification's
   view field reads blocked (a second strictly validated optional
   field on the same schema), so the operator is flagged whatever
-  the scene says — and because Sam's stay at Owner's Unit 1N that
+  the scene says — and because Sam's stay at Garden Unit 1A that
   Friday is a single night, the notification is marked urgent.
   A merely unclear frame never counts as covered; the view has
   to read blocked or shifted explicitly (frame f11, via the API,
-  is the shifted variant at Studio 2N).
+  is the shifted variant at Studio 2A).
 - Guest lockout (case #10): "Guest lockout — person at the shut
-  door" reports a lockout at Studio 2N and pins frame f13: the
+  door" reports a lockout at Studio 2A and pins frame f13: the
   operator's notification carries the exact, small claim — a
   person is at the door and the door reads shut — plus the frame
   reference. Nothing is sent to the guest. The same play has a
@@ -158,20 +184,63 @@ Driving it on the page:
   second run flags the operator with the stuck-at-the-door
   reason; frame f14 (door open) breaks the pattern and logs.
 - Guest feels unsafe (case #49): "Guest feels unsafe" assembles
-  Studio 2N's latest three frames — references plus their staged
+  Studio 2A's latest three frames — references plus their staged
   classifications, nothing more claimed — into one URGENT
   operator notification. At a property with no frames on record
-  for the date (Owner's Unit 1N on 2026-10-28, via the API), the
+  for the date (Garden Unit 1A on 2026-10-28, via the API), the
   notification says exactly that: the absence is the information.
 - Sunset check (case #11): "Sunset check — entry dark, second
-  night running" uses frame f16 at Studio 2N on Dana's arrival
+  night running" uses frame f16 at Studio 2A on Dana's arrival
   day: the entry lights read off, and because the fixtures carry
   one dark night already, the notification adds the bulb change
-  to the next turnover list. Frame f15 (Peter's House, via the
+  to the next turnover list. Frame f15 (Maple Street House, via the
   API) is a first dark night — flagged, no bulb line; frame f17
   (lights on) logs only; and with no arrival that day the check
   logs whatever it reads.
-- In-stay issue: "Guest reports a leak — Owner's Unit 1N" runs
+- Dog with no pet on the booking (case #46): "Camera motion —
+  dog arriving with the party" uses frame f19 at Maple Street House
+  on Marcus's arrival day: the classification's animal field
+  reads dog_sized (a third strictly validated optional field on
+  the same schema), the party is in the arrival window, and the
+  booking lists no pet — so the operator is flagged with the
+  still and the exact small print: nothing has been charged,
+  service animals are exempt, the call is the operator's. Frame
+  f20 (via the API) is the control: a dog-sized animal crossing
+  the driveway alone at night logs quietly, and a booking that
+  lists a pet (a fixture variant) logs too.
+- Morning snow check (case #32): "Morning check — snow still
+  down at an empty home" uses frame f21 at Maple Street House on
+  2026-10-29, a day with no stay, arrival, or turnover there:
+  the classification's ground field reads snow_covered past the
+  10 AM deadline, so the operator is flagged to send the
+  shoveler. Frame f22 (Studio 2A, via the API) is the urgent
+  variant — a guest and a turnover are due that day. Frame f23
+  (clear) logs; frame f24 (ground unsettled) flags, fail safe;
+  and at an occupied home (frame f25, Alex mid-stay) the check
+  skips quietly by design.
+- Area outage (case #36): "Area outage — three cameras drop at
+  once" fires three camera_offline events inside eleven minutes
+  (two Cedar Hollow properties, three cameras, one shared area
+  label). Each runs the ordinary offline play; when the third
+  lands, the correlation layer forms the cluster, marks each
+  individual run with the cluster_id in its own record, and the
+  response adds the single area-outage run — one operator
+  notification listing the affected properties instead of three
+  urgent alerts. Below the threshold (fewer cameras, one
+  property, a wider window) nothing changes. A cluster touching
+  a vacant property in a freezing month adds the freeze-risk
+  line to the notification.
+- Camera upkeep (case #58): "Camera upkeep — fleet self-check"
+  reads the staged camera history in the fixtures and produces
+  the turnover notes the evidence supports: Garden Unit 1A's
+  front-door camera went offline around 7 AM on three days
+  ("check the WiFi"), Studio 2A's front-door camera fires night
+  motion that is almost all nothing-or-animal, and Maple Street
+  House's driveway camera classifies most frames unclear ("wipe
+  the lens" twice over). 1A's backyard camera is staged below
+  every threshold and earns no note. The report goes to the
+  operator only; nothing is sent to a guest or a cleaner.
+- In-stay issue: "Guest reports a leak — Garden Unit 1A" runs
   Play 4 against the mid-stay fixture (Alex, in residence
   2026-10-29): the issue is extracted, the stay and the fixture
   handyman are verified, the guest reply is drafted with a safe

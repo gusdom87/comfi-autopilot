@@ -58,6 +58,12 @@ class PropertyInfo:
     # line for where that switch is. Fixture wording only.
     switch_cameras: tuple = ()
     switch_location: str = ""
+    # Neighborhood label (Play 7 final-list case #36, the area
+    # outage correlation): properties sharing an area label are the
+    # ones whose cameras dropping together reads as one area event
+    # rather than several property events. "" = no area on record;
+    # such a property can never join a cluster.
+    area: str = ""
 
 
 @dataclass
@@ -85,6 +91,10 @@ class Arrival:
     guest_name: str = "there"              # first name, for the greeting
     checkin_time: str = ""                 # "" -> property standard
     guest_count: int = 2                   # booked party size
+    # Whether the booking itself lists a pet (Play 7 final-list
+    # case #46): True means a dog arriving with this party is
+    # exactly what was booked and never flags anyone.
+    pet_on_booking: bool = False
 
 
 @dataclass
@@ -98,6 +108,7 @@ class Stay:
     guest_count: int = 2                   # booked party size
     arrival_date: str = ""
     departure_date: str = ""
+    pet_on_booking: bool = False           # as on Arrival (case #46)
 
 
 @dataclass
@@ -128,6 +139,24 @@ class WorkWindow:
     start: str = "00:00"                   # "HH:MM"
     end: str = "23:59"                     # "HH:MM"
     kind: str = "vendor"                   # cleaner | vendor | service
+
+
+@dataclass
+class CameraHistory:
+    """One camera's own event history (Play 7 final-list case #58,
+    camera upkeep): the staged stand-in for what a real camera fleet
+    accumulates — when this camera went offline (one (date, "HH:MM")
+    pair per event), and counters over its recent frames. The
+    upkeep check reads these for patterns; the counters are the
+    evidence its notes cite, never a live feed.
+    """
+    property_id: str
+    camera: str
+    offline_events: tuple = ()             # of (date, "HH:MM")
+    night_motion: int = 0                  # motion events at night
+    night_trivial: int = 0                 # of those, nothing/animal
+    unclear_frames: int = 0                # frames classified unclear
+    frames_total: int = 0                  # frames in the window
 
 
 @dataclass
@@ -203,6 +232,13 @@ class RealityContext(Protocol):
         lit resets it to zero. Returns the streak after this read."""
         ...
 
+    def camera_history(self) -> tuple:
+        """Every camera's staged event history (CameraHistory
+        records), for the upkeep self-check. An empty tuple means
+        no fleet history is on record — the check must say so
+        rather than invent a clean bill of health."""
+        ...
+
 
 class FixtureContext:
     """RealityContext backed by staged data.
@@ -217,6 +253,8 @@ class FixtureContext:
       "closed_dates": ["<property_id>|<date>", ...],
       "work_windows": {"<property_id>|<date>": [{WorkWindow fields}]},
       "dark_nights": {property_id: consecutive dark entry nights},
+      "camera_history": [{CameraHistory fields, with offline_events
+        as [{"date": ..., "time": "HH:MM"}, ...]}],
     }
     """
 
@@ -263,6 +301,14 @@ class FixtureContext:
                 for kw in windows)
         self._dark_nights = {str(pid): int(n) for pid, n
                              in data.get("dark_nights", {}).items()}
+        self._camera_history = []
+        for kw in data.get("camera_history", []):
+            kw = dict(kw)
+            events = tuple((str(e["date"]), str(e["time"]))
+                           for e in kw.pop("offline_events", []))
+            self._camera_history.append(
+                CameraHistory(offline_events=events, **kw))
+        self._camera_history = tuple(self._camera_history)
 
     def get_property(self, property_id: str) -> PropertyInfo | None:
         return self._props.get(property_id)
@@ -302,6 +348,9 @@ class FixtureContext:
         streak = self._dark_nights.get(property_id, 0) + 1 if dark else 0
         self._dark_nights[property_id] = streak
         return streak
+
+    def camera_history(self) -> tuple:
+        return self._camera_history
 
     def ready_time_minutes(self, property_id: str, date: str) -> int | None:
         prop = self.get_property(property_id)
@@ -361,120 +410,156 @@ class LiveTurnoReadAdapter:
     def note_dark_night(self, property_id: str, dark: bool):
         self._stub()
 
+    def camera_history(self):
+        self._stub()
+
 
 def default_fixture_data() -> dict:
-    """The staged world the demo runs in. Three Lockport-style units on
-    one arrival day (2026-10-28), one per early check-in outcome:
-      lockport-1n  no turnover            -> grant
-      lockport-2n  turnover ready 2:00 PM -> conditional for a 1 PM ask
-      peters-house turnover ready 3:30 PM -> deny for a 1 PM ask
+    """The staged world the demo runs in. Three Cedar Hollow-style units
+    on one arrival day (2026-10-28), one per early check-in outcome:
+      cedar-1a    no turnover            -> grant
+      cedar-2a    turnover ready 2:00 PM -> conditional for a 1 PM ask
+      maple-house turnover ready 3:30 PM -> deny for a 1 PM ask
     The same day also carries the cleaner-done fixtures Play 3 runs on:
-      lockport-2n  clean complete, nothing flagged -> guest-ready sends
-      peters-house clean complete, problem flagged -> human hold
+      cedar-2a    clean complete, nothing flagged -> guest-ready sends
+      maple-house clean complete, problem flagged -> human hold
     And one stay in progress for Play 7 (camera check): Alex's party
-    of four is mid-stay at lockport-1n on 2026-10-29, which is what
+    of four is mid-stay at cedar-1a on 2026-10-29, which is what
     the staged large-gathering frame (vision.STAGED_FRAMES f3) is
     checked against. The frames themselves live in plays/vision.py.
     The same stay is Play 4's (in-stay issues) reality: Alex is in
-    residence at lockport-1n on 2026-10-29, and the vendor roster
+    residence at cedar-1a on 2026-10-29, and the vendor roster
     carries one fixture handyman covering every property and issue.
-    Peter's House is additionally marked closed/vacant on 2026-10-30,
-    with one staged service window that morning, for Play 7's vacant
-    mode. The Lockport units' front-door cameras are staged as
+    Maple Street House is additionally marked closed/vacant on
+    2026-10-30, with one staged service window that morning, for Play
+    7's vacant mode. The Cedar Hollow units' front-door cameras are staged as
     switch-fed, with guest-safe switch-location lines, for the
     camera-offline extension. Check-in notes are staged instruction
     lines, never real codes.
     The final-list camera batch adds: Sam's one-night weekend stay
-    at lockport-1n on 2026-10-30 (a Friday), the covered-camera
+    at cedar-1a on 2026-10-30 (a Friday), the covered-camera
     frame's stay reality (vision.STAGED_FRAMES f10); and a staged
-    dark-entry streak — Studio 2N carries one consecutive dark
+    dark-entry streak — Studio 2A carries one consecutive dark
     night already, so its 2026-10-28 sunset check (frame f16) is
     the second night running, which is what puts a bulb change on
     the next turnover list (case #11).
+    Final-list batch 2 adds: an area label ("Cedar Hollow") on all
+    three properties, so cameras dropping together correlate into
+    one area outage (case #36); and a staged camera history for
+    the upkeep check (case #58) — Garden Unit 1A's front-door
+    camera drops offline around 7 AM three days running (the WiFi
+    pattern), Studio 2A's front-door camera fires night motion
+    that is almost all nothing-or-animal (the cobweb signature),
+    and Maple Street House's driveway camera classifies most of
+    its frames unclear (a dirty lens). 1A's backyard camera is staged
+    below every upkeep threshold, as the control.
     """
     return {
         "properties": {
-            "lockport-1n": {"name": "Owner's Unit 1N, Lockport",
-                            "standard_checkin": "16:00",
-                            "typical_clean_minutes": 120,
-                            "buffer_minutes": 30, "default_ready": "12:00",
-                            "door_note": "The front door keypad takes the "
-                                         "code from your check-in message.",
-                            "parking_note": "You are welcome to park in the "
-                                            "driveway; street parking in "
-                                            "front works too.",
-                            "lock_note": "Front door is a keypad deadbolt; "
-                                         "the battery pack sits on the "
-                                         "inside face of the door.",
-                            "water_note": "Water shutoff is in the basement "
-                                          "utility room, on the wall by "
-                                          "the water heater.",
-                            "switch_cameras": ["front-door"],
-                            "switch_location": "by the front door, inside"},
-            "lockport-2n": {"name": "Studio 2N, Lockport",
+            "cedar-1a": {"name": "Garden Unit 1A, Cedar Hollow",
+                         "standard_checkin": "16:00",
+                         "typical_clean_minutes": 120,
+                         "buffer_minutes": 30, "default_ready": "12:00",
+                         "door_note": "The front door keypad takes the "
+                                      "code from your check-in message.",
+                         "parking_note": "You are welcome to park in the "
+                                         "driveway; street parking in "
+                                         "front works too.",
+                         "lock_note": "Front door is a keypad deadbolt; "
+                                      "the battery pack sits on the "
+                                      "inside face of the door.",
+                         "water_note": "Water shutoff is in the basement "
+                                       "utility room, on the wall by "
+                                       "the water heater.",
+                         "switch_cameras": ["front-door"],
+                         "switch_location": "by the front door, inside",
+                         "area": "Cedar Hollow"},
+            "cedar-2a": {"name": "Studio 2A, Cedar Hollow",
+                         "standard_checkin": "16:00",
+                         "typical_clean_minutes": 150,
+                         "buffer_minutes": 30, "default_ready": "12:00",
+                         "door_note": "The studio door keypad takes the "
+                                      "code from your check-in message.",
+                         "parking_note": "Please park in the driveway; "
+                                         "street parking in front works "
+                                         "too.",
+                         "lock_note": "Studio door is a keypad deadbolt.",
+                         "water_note": "Water shutoff is under the "
+                                       "kitchen sink cabinet.",
+                         "switch_cameras": ["front-door"],
+                         "switch_location": "by the studio front door, "
+                                            "inside",
+                         "area": "Cedar Hollow"},
+            "maple-house": {"name": "Maple Street House",
                             "standard_checkin": "16:00",
                             "typical_clean_minutes": 150,
                             "buffer_minutes": 30, "default_ready": "12:00",
-                            "door_note": "The studio door keypad takes the "
+                            "door_note": "The front door keypad takes the "
                                          "code from your check-in message.",
-                            "parking_note": "Please park in the driveway; "
-                                            "street parking in front works "
-                                            "too.",
-                            "lock_note": "Studio door is a keypad deadbolt.",
-                            "water_note": "Water shutoff is under the "
-                                          "kitchen sink cabinet.",
-                            "switch_cameras": ["front-door"],
-                            "switch_location": "by the studio front door, "
-                                               "inside"},
-            "peters-house": {"name": "Peter's House",
-                             "standard_checkin": "16:00",
-                             "typical_clean_minutes": 150,
-                             "buffer_minutes": 30, "default_ready": "12:00",
-                             "door_note": "The front door keypad takes the "
-                                          "code from your check-in message.",
-                             "parking_note": "You are welcome to park in "
-                                             "the driveway.",
-                             "lock_note": "Front door is a keypad deadbolt "
-                                          "over a lever handle.",
-                             "water_note": "Water shutoff is in the "
-                                           "first-floor utility closet."},
+                            "parking_note": "You are welcome to park in "
+                                            "the driveway.",
+                            "lock_note": "Front door is a keypad deadbolt "
+                                         "over a lever handle.",
+                            "water_note": "Water shutoff is in the "
+                                          "first-floor utility closet.",
+                            "area": "Cedar Hollow"},
         },
         "turnovers": {
-            "lockport-2n|2026-10-28": {
-                "checkout_time": "11:00", "cleaner_id": "cleaner-cristina",
-                "cleaner_name": "Cristina", "duration_minutes": 150},
-            "peters-house|2026-10-28": {
-                "checkout_time": "12:30", "cleaner_id": "cleaner-jader",
-                "cleaner_name": "Jader", "duration_minutes": 150},
+            "cedar-2a|2026-10-28": {
+                "checkout_time": "11:00", "cleaner_id": "cleaner-lena",
+                "cleaner_name": "Lena", "duration_minutes": 150},
+            "maple-house|2026-10-28": {
+                "checkout_time": "12:30", "cleaner_id": "cleaner-tomas",
+                "cleaner_name": "Tomas", "duration_minutes": 150},
         },
         "arrivals": {
-            "lockport-2n|2026-10-28": {"guest_name": "Dana"},
-            "peters-house|2026-10-28": {"guest_name": "Marcus"},
+            "cedar-2a|2026-10-28": {"guest_name": "Dana"},
+            "maple-house|2026-10-28": {"guest_name": "Marcus"},
         },
         "stays": {
-            "lockport-1n|2026-10-29": {
+            "cedar-1a|2026-10-29": {
                 "guest_name": "Alex", "guest_count": 4,
                 "arrival_date": "2026-10-27",
                 "departure_date": "2026-10-30"},
-            "lockport-1n|2026-10-30": {
+            "cedar-1a|2026-10-30": {
                 "guest_name": "Sam", "guest_count": 2,
                 "arrival_date": "2026-10-30",
                 "departure_date": "2026-10-31"},
         },
         "clean_reports": {
-            "lockport-2n|2026-10-28": {
+            "cedar-2a|2026-10-28": {
                 "status": "complete", "finished_at": "1:32 PM",
-                "cleaner_id": "cleaner-cristina", "problem_flag": ""},
-            "peters-house|2026-10-28": {
+                "cleaner_id": "cleaner-lena", "problem_flag": ""},
+            "maple-house|2026-10-28": {
                 "status": "complete", "finished_at": "3:05 PM",
-                "cleaner_id": "cleaner-jader",
+                "cleaner_id": "cleaner-tomas",
                 "problem_flag": "Cracked wine glass found in the sink; "
                                 "one hand towel stained and set aside."},
         },
-        "closed_dates": ["peters-house|2026-10-30"],
-        "dark_nights": {"lockport-2n": 1},
+        "closed_dates": ["maple-house|2026-10-30"],
+        "dark_nights": {"cedar-2a": 1},
+        "camera_history": [
+            {"property_id": "cedar-1a", "camera": "front-door",
+             "offline_events": [{"date": "2026-10-25", "time": "07:03"},
+                                {"date": "2026-10-26", "time": "07:08"},
+                                {"date": "2026-10-27", "time": "07:05"}],
+             "night_motion": 8, "night_trivial": 3,
+             "unclear_frames": 2, "frames_total": 45},
+            {"property_id": "cedar-1a", "camera": "backyard",
+             "offline_events": [{"date": "2026-10-26", "time": "22:40"}],
+             "night_motion": 5, "night_trivial": 2,
+             "unclear_frames": 1, "frames_total": 30},
+            {"property_id": "cedar-2a", "camera": "front-door",
+             "offline_events": [],
+             "night_motion": 46, "night_trivial": 41,
+             "unclear_frames": 3, "frames_total": 52},
+            {"property_id": "maple-house", "camera": "driveway",
+             "offline_events": [{"date": "2026-10-26", "time": "23:58"}],
+             "night_motion": 12, "night_trivial": 4,
+             "unclear_frames": 18, "frames_total": 30},
+        ],
         "work_windows": {
-            "peters-house|2026-10-30": [{
+            "maple-house|2026-10-30": [{
                 "label": "Fixture service visit", "start": "10:00",
                 "end": "12:00", "kind": "vendor"}],
         },

@@ -4,7 +4,7 @@ Design rules: the operator's voice is short, warm, and plain. No corporate
 filler, no exclamation marks in drafts unless the guest used one first.
 """
 
-TRIAGE_SYSTEM = """You are Jev, the triage layer for a short-term rental operator.
+TRIAGE_SYSTEM = """You are the triage layer for a short-term rental operator.
 Read one guest message and classify it into exactly one category:
 
 - "Act": something must happen now, today, or before a deadline. The guest

@@ -33,12 +33,15 @@
 </style></head>
 <body>
   <h1>Comfi Autopilot</h1>
-  <p>An autonomous operations system for short-term rentals, connected to
-     Hospitable. Start with the first step of the operation: paste a guest
+  <p>An autonomous operations system for short-term rentals, designed to
+     connect to Hospitable; this build runs on a staged fixture world (no live
+     Hospitable or Turno connection). Start with the first step of the operation: paste a guest
      message. Triage returns a category, a confidence, a draft in the
      operator's voice, a route, and a reason, plus the send right that category
-     has earned so far. The urgency decision itself is made by Jev, an existing
-     decision tool (TypeSafe AI) the operator runs inside Comfi Autopilot.</p>
+     has earned so far. The urgency decision is made by the triage layer in
+     this repo, a hackathon-built port of the operator's Jev pipeline (TypeSafe
+     AI) to Muse Spark/Wonder; Jev's original tool, the hand-labeled dataset,
+     and the Oct 7–14 pilot are pre-existing.</p>
   <p>
     <button class="chip" data-msg="Hi, we just got back and the door code is not working. We are standing outside with our bags.">Try: lockout</button>
     <button class="chip" data-msg="Would it be possible to check out at 1pm instead of 11? Our flight home is late afternoon.">Try: late checkout</button>
@@ -47,9 +50,9 @@
   </p>
   <label>Property
     <select id="prop">
-      <option>Lockport Owner's Unit 1N</option><option>Lockport Laundry Unit 1S</option>
-      <option>Lockport Studio 2N</option><option>Lockport Our Unit 2S</option>
-      <option>Stickney condo</option><option>Peter's House</option>
+      <option>Cedar Hollow Garden Unit 1A</option><option>Cedar Hollow Garden Unit 1B</option>
+      <option>Cedar Hollow Studio 2A</option><option>Cedar Hollow Upper Unit 2B</option>
+      <option>Ridgeview condo</option><option>Maple Street House</option>
     </select>
   </label>
   <textarea id="msg" rows="6" placeholder="Paste a guest message here"></textarea>
@@ -80,9 +83,9 @@
      cleaner, the run waits, and the cleaner's report finishes the chain.</p>
   <label>Property
     <select id="ec-prop">
-      <option value="lockport-2n">Studio 2N, Lockport — turnover that day, ready 2:00 PM</option>
-      <option value="lockport-1n">Owner's Unit 1N, Lockport — no turnover, ready 12:00 PM</option>
-      <option value="peters-house">Peter's House — late turnover, ready 3:30 PM</option>
+      <option value="cedar-2a">Studio 2A, Cedar Hollow — turnover that day, ready 2:00 PM</option>
+      <option value="cedar-1a">Garden Unit 1A, Cedar Hollow — no turnover, ready 12:00 PM</option>
+      <option value="maple-house">Maple Street House — late turnover, ready 3:30 PM</option>
     </select>
   </label>
   <label>Arrival date
@@ -101,8 +104,8 @@
      the clean against the record, then the arriving guest hears the place is
      ready. If the cleaner flagged a problem, the guest hears nothing and a
      human takes over.</p>
-  <button class="bigbtn" id="cd-good">Cleaner finished — Studio 2N, guest arriving today</button>
-  <button class="bigbtn" id="cd-flag">Cleaner finished — Peter's House (problem flagged)</button>
+  <button class="bigbtn" id="cd-good">Cleaner finished — Studio 2A, guest arriving today</button>
+  <button class="bigbtn" id="cd-flag">Cleaner finished — Maple Street House (problem flagged)</button>
   <div class="timeline" id="cd-timeline"></div>
 
   <h3>Play: camera check</h3>
@@ -124,18 +127,29 @@
      <strong>lockout report</strong> hands the operator the latest door frame,
      a guest who <strong>feels unsafe</strong> gets the latest frames to the
      operator urgently, and a <strong>sunset check</strong> reads the entry
-     lights before an arriving guest does. The frames are staged metadata,
-     not real photos.</p>
-  <button class="bigbtn" id="cc-guest">Camera motion — guest arriving, Studio 2N</button>
-  <button class="bigbtn" id="cc-gathering">Camera motion — large gathering, Owner's Unit 1N</button>
-  <button class="bigbtn" id="cc-offline">Camera offline — switch flipped during a stay, Owner's Unit 1N</button>
-  <button class="bigbtn" id="cc-vacant">Camera motion — person at the closed house, Peter's House</button>
-  <button class="bigbtn" id="cc-state-open">Post-turnover check — door open, Studio 2N</button>
-  <button class="bigbtn" id="cc-state-ok">Post-turnover check — all secured, Studio 2N</button>
-  <button class="bigbtn" id="cc-covered">Camera covered — one-night weekend stay, Owner's Unit 1N</button>
-  <button class="bigbtn" id="cc-lockout">Guest lockout — person at the shut door, Studio 2N</button>
-  <button class="bigbtn" id="cc-unsafe">Guest feels unsafe — latest frames to the operator, Studio 2N</button>
-  <button class="bigbtn" id="cc-dark">Sunset check — entry dark, second night running, Studio 2N</button>
+     lights before an arriving guest does. Batch 2 rides the same rails: a
+     <strong>dog arriving with the party</strong> when the booking lists no
+     pet flags the operator with the still (nothing is charged; the call is
+     the operator's), a <strong>morning check</strong> reads the snow at an
+     empty home, cameras <strong>dropping together</strong> across
+     properties collapse into one area-outage notification, and a periodic
+     <strong>upkeep check</strong> turns the fleet's own history into
+     turnover notes (check the WiFi, wipe the lens). The frames are staged
+     metadata, not real photos.</p>
+  <button class="bigbtn" id="cc-guest">Camera motion — guest arriving, Studio 2A</button>
+  <button class="bigbtn" id="cc-gathering">Camera motion — large gathering, Garden Unit 1A</button>
+  <button class="bigbtn" id="cc-offline">Camera offline — switch flipped during a stay, Garden Unit 1A</button>
+  <button class="bigbtn" id="cc-vacant">Camera motion — person at the closed house, Maple Street House</button>
+  <button class="bigbtn" id="cc-state-open">Post-turnover check — door open, Studio 2A</button>
+  <button class="bigbtn" id="cc-state-ok">Post-turnover check — all secured, Studio 2A</button>
+  <button class="bigbtn" id="cc-covered">Camera covered — one-night weekend stay, Garden Unit 1A</button>
+  <button class="bigbtn" id="cc-lockout">Guest lockout — person at the shut door, Studio 2A</button>
+  <button class="bigbtn" id="cc-unsafe">Guest feels unsafe — latest frames to the operator, Studio 2A</button>
+  <button class="bigbtn" id="cc-dark">Sunset check — entry dark, second night running, Studio 2A</button>
+  <button class="bigbtn" id="cc-dog">Camera motion — dog arriving with the party, no pet booked, Maple Street House</button>
+  <button class="bigbtn" id="cc-snow">Morning check — snow still down at an empty home, Maple Street House</button>
+  <button class="bigbtn" id="cc-outage">Area outage — three cameras drop at once, Cedar Hollow</button>
+  <button class="bigbtn" id="cc-upkeep">Camera upkeep — fleet self-check (WiFi pattern, dirty lenses)</button>
   <div class="timeline" id="cc-timeline"></div>
 
   <h3>Play: in-stay issue → handyman dispatch</h3>
@@ -147,8 +161,8 @@
      <strong>operator</strong> in the same run. When the vendor sends an ETA, and later
      reports the work done, the guest hears about each step — every send gated.
      The vendor and his rates are fixtures; the dispatch is simulated or held.</p>
-  <button class="bigbtn" id="ih-leak">Guest reports a leak — Owner's Unit 1N, mid-stay</button>
-  <button class="bigbtn" id="ih-gas">Guest smells gas — Owner's Unit 1N, mid-stay (safety)</button>
+  <button class="bigbtn" id="ih-leak">Guest reports a leak — Garden Unit 1A, mid-stay</button>
+  <button class="bigbtn" id="ih-gas">Guest smells gas — Garden Unit 1A, mid-stay (safety)</button>
   <div class="timeline" id="ih-timeline"></div>
   <p id="ih-eventrow" style="display:none">
     <button class="bigbtn" id="ih-eta">Vendor update: arriving 3:30 PM</button>
@@ -207,9 +221,21 @@
       if (r.scene) out += '<div>Frame classified: <strong>' + esc(r.scene) + '</strong>' +
         (r.people_count !== undefined && r.people_count !== null ? ' · people: ' + r.people_count : '') +
         (r.view && r.view !== 'unknown' ? ' · view: <strong>' + esc(r.view) + '</strong>' : '') +
+        (r.animal && r.animal !== 'unknown' ? ' · animal: <strong>' + esc(r.animal) + '</strong>' : '') +
         (r.note ? ' · &ldquo;' + esc(r.note) + '&rdquo;' : '') +
         (r.route ? ' · route: <strong>' + esc(r.route) + '</strong>' : '') +
         (r.reason ? ' · ' + esc(r.reason) : '') + '</div>';
+      if (r.ground !== undefined) out += '<div>Ground: <strong>' + esc(r.ground) + '</strong>' +
+        (r.urgent ? ' · <span class="err">URGENT — a cleaner or guest is due today</span>' : '') +
+        (r.reason ? ' · ' + esc(r.reason) : '') + '</div>';
+      if (r.notes) out += '<div>Upkeep notes (' + r.notes.length + '):' +
+        (r.notes.length ? '<ul>' + r.notes.map(n => '<li><strong>' + esc(n.task) + '</strong> (' +
+          esc(n.camera) + ' camera) — ' + esc(n.evidence) + '</li>').join('') + '</ul>'
+                        : ' none — no camera crosses an upkeep threshold') + '</div>';
+      if (r.cluster_id) out += '<div>Area-outage cluster: <strong>' + esc(r.cluster_id) + '</strong>' +
+        (r.cluster_note ? ' · ' + esc(r.cluster_note) : '') +
+        (r.area ? ' · area: ' + esc(r.area) : '') +
+        (r.winter_freeze_risk ? ' · <span class="err">FREEZE RISK at a vacant home</span>' : '') + '</div>';
       if (r.frames) out += '<div>Frames assembled: <strong>' +
         (r.frames.length ? r.frames.map(esc).join(', ') : 'none on record') + '</strong>' +
         (r.urgent ? ' · <span class="err">URGENT</span>' : '') + '</div>';
@@ -279,7 +305,7 @@
     document.getElementById('ec-done').onclick = async () => {
       if (!ecRunId) return;
       const run = await post('/event', { run_id: ecRunId, event: 'cleaner_done',
-        payload: { cleaner_id: 'cleaner-cristina', finished_at: '1:32 PM' } });
+        payload: { cleaner_id: 'cleaner-lena', finished_at: '1:32 PM' } });
       renderRun(run, document.getElementById('ec-timeline'));
       document.getElementById('ec-eventrow').style.display = (run.status === 'waiting') ? 'block' : 'none';
     };
@@ -290,9 +316,9 @@
       renderRun(run, document.getElementById('cd-timeline'));
     };
     document.getElementById('cd-good').onclick = cdFire(
-      { property_id: 'lockport-2n', cleaner_id: 'cleaner-cristina', finished_at: '1:32 PM' });
+      { property_id: 'cedar-2a', cleaner_id: 'cleaner-lena', finished_at: '1:32 PM' });
     document.getElementById('cd-flag').onclick = cdFire(
-      { property_id: 'peters-house', cleaner_id: 'cleaner-jader', finished_at: '3:05 PM' });
+      { property_id: 'maple-house', cleaner_id: 'cleaner-tomas', finished_at: '3:05 PM' });
 
     const ccFire = (body, play) => async () => {
       const run = await post('/play', Object.assign(
@@ -300,41 +326,79 @@
       renderRun(run, document.getElementById('cc-timeline'));
     };
     document.getElementById('cc-guest').onclick = ccFire(
-      { property_id: 'lockport-2n', date: '2026-10-28', camera: 'front-door',
+      { property_id: 'cedar-2a', date: '2026-10-28', camera: 'front-door',
         ts: '2026-10-28T15:42:00', frame_id: 'f1' });
     document.getElementById('cc-gathering').onclick = ccFire(
-      { property_id: 'lockport-1n', date: '2026-10-29', camera: 'backyard',
+      { property_id: 'cedar-1a', date: '2026-10-29', camera: 'backyard',
         ts: '2026-10-29T21:48:00', frame_id: 'f3' });
     document.getElementById('cc-offline').onclick = ccFire(
-      { property_id: 'lockport-1n', date: '2026-10-29', camera: 'front-door',
+      { property_id: 'cedar-1a', date: '2026-10-29', camera: 'front-door',
         ts: '2026-10-29T19:20:00', mention: 'lights_and_camera' },
       'camera_offline');
     document.getElementById('cc-vacant').onclick = ccFire(
-      { property_id: 'peters-house', date: '2026-10-30', camera: 'front-door',
+      { property_id: 'maple-house', date: '2026-10-30', camera: 'front-door',
         ts: '2026-10-30T22:15:00', frame_id: 'f5' });
     document.getElementById('cc-state-open').onclick = ccFire(
-      { property_id: 'lockport-2n', date: '2026-10-28', kind: 'post_turnover',
+      { property_id: 'cedar-2a', date: '2026-10-28', kind: 'post_turnover',
         camera: 'front-door', ts: '2026-10-28T14:15:00', frame_id: 'f7' },
       'camera_post_turnover');
     document.getElementById('cc-state-ok').onclick = ccFire(
-      { property_id: 'lockport-2n', date: '2026-10-28', kind: 'post_turnover',
+      { property_id: 'cedar-2a', date: '2026-10-28', kind: 'post_turnover',
         camera: 'front-door', ts: '2026-10-28T14:20:00', frame_id: 'f8' },
       'camera_post_turnover');
     document.getElementById('cc-covered').onclick = ccFire(
-      { property_id: 'lockport-1n', date: '2026-10-30', camera: 'front-door',
+      { property_id: 'cedar-1a', date: '2026-10-30', camera: 'front-door',
         ts: '2026-10-30T21:05:00', frame_id: 'f10' });
     document.getElementById('cc-lockout').onclick = ccFire(
-      { property_id: 'lockport-2n', date: '2026-10-28', camera: 'front-door',
+      { property_id: 'cedar-2a', date: '2026-10-28', camera: 'front-door',
         ts: '2026-10-28T15:52:00', frame_id: 'f13' },
       'guest_lockout');
     document.getElementById('cc-unsafe').onclick = ccFire(
-      { property_id: 'lockport-2n', date: '2026-10-28',
+      { property_id: 'cedar-2a', date: '2026-10-28',
         kind: 'guest_unsafe' },
       'guest_unsafe');
     document.getElementById('cc-dark').onclick = ccFire(
-      { property_id: 'lockport-2n', date: '2026-10-28', kind: 'sunset_check',
+      { property_id: 'cedar-2a', date: '2026-10-28', kind: 'sunset_check',
         camera: 'front-door', ts: '2026-10-28T18:47:00', frame_id: 'f16' },
       'camera_sunset_check');
+    document.getElementById('cc-dog').onclick = ccFire(
+      { property_id: 'maple-house', date: '2026-10-28', camera: 'front-door',
+        ts: '2026-10-28T15:58:00', frame_id: 'f19' });
+    document.getElementById('cc-snow').onclick = ccFire(
+      { property_id: 'maple-house', date: '2026-10-29', kind: 'morning_check',
+        camera: 'front-door', ts: '2026-10-29T10:30:00', frame_id: 'f21' },
+      'camera_morning_check');
+    document.getElementById('cc-upkeep').onclick = ccFire(
+      { date: '2026-10-28', kind: 'camera_upkeep' },
+      'camera_upkeep');
+    document.getElementById('cc-outage').onclick = async () => {
+      const d = await post('/play', { play: 'camera_outage_cluster', events: [
+        { property_id: 'cedar-1a', date: '2026-10-29', camera: 'front-door',
+          ts: '2026-10-29T19:20:00', mention: 'lights_and_camera' },
+        { property_id: 'cedar-2a', date: '2026-10-29', camera: 'front-door',
+          ts: '2026-10-29T19:26:00' },
+        { property_id: 'cedar-1a', date: '2026-10-29', camera: 'backyard',
+          ts: '2026-10-29T19:31:00' } ] });
+      const mount = document.getElementById('cc-timeline');
+      if (d.error) { mount.innerHTML = '<p class="err">' + esc(d.error) + '</p>'; return; }
+      if (d.cluster_run) {
+        renderRun(d.cluster_run, mount);
+        mount.insertAdjacentHTML('afterbegin',
+          '<p class="fine">Three camera-offline events fired inside eleven minutes. ' +
+          'Each individual run was marked part of cluster <code>' + esc(d.cluster.cluster_id) +
+          '</code> — the operator gets the one area-outage notification below, ' +
+          'not three separate urgent alerts.</p>');
+      } else {
+        // A repeat click: the events join the cluster already announced.
+        const joined = d.runs.flatMap(r => r.steps || [])
+          .find(s => s.name === 'outage_cluster');
+        mount.innerHTML = joined
+          ? '<p>These events joined the already-announced cluster <code>' +
+            esc(joined.result.cluster_id) + '</code>; no second notification was raised.</p>'
+          : '<p>No cluster formed — the offline events stayed ' +
+            'below the correlation threshold.</p>';
+      }
+    };
 
     let ihRunId = null;
     const ihRender = run => {
@@ -344,7 +408,7 @@
     };
     const ihFire = message => async () => {
       const run = await post('/play', { play: 'in_stay_issue', message,
-        property_id: 'lockport-1n', date: '2026-10-29' });
+        property_id: 'cedar-1a', date: '2026-10-29' });
       ihRunId = run.run_id || null;
       ihRender(run);
     };

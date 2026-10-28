@@ -1,18 +1,26 @@
 import json, os, sys
+
+import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 os.environ["JEV_SPEND_STATE"] = os.path.join(os.path.dirname(__file__), "spend-plays-test.json")
 
 from jev.plays import (FixtureContext, PlayEngine, STAKES,
                        default_fixture_data, get, match)
-from jev.plays.camera_check import (CameraCheck, CameraOffline,
+from jev.plays.camera_check import (DOG_REASON, CameraCheck,
+                                    CameraOffline, CameraUpkeep,
                                     GuestLockout, GuestUnsafe,
-                                    PostTurnoverCheck, SunsetCheck,
+                                    MorningCheck, PostTurnoverCheck,
+                                    SunsetCheck, _NOTIFIED_CLUSTERS,
                                     _reset_door_frames,
+                                    _reset_outage_correlator,
                                     handle_camera_event,
                                     handle_camera_offline_event,
                                     handle_camera_online_event,
+                                    handle_camera_upkeep_event,
                                     handle_guest_lockout_event,
                                     handle_guest_unsafe_event,
+                                    handle_morning_check_event,
+                                    handle_offline_burst,
                                     handle_post_turnover_event,
                                     handle_sunset_check_event)
 from jev.plays.vision import FixtureVision, STAGED_FRAMES, parse_classification
@@ -88,7 +96,7 @@ def test_trivial_scenes_log_only():
     })
     for frame_id in ("fx-none", "fx-cat", "fx-car"):
         run = _event(_engine(), "f1", play=CameraCheck(vision=vision),
-                     property_id="lockport-1n", date="2026-10-28",
+                     property_id="cedar-1a", date="2026-10-28",
                      frame_id=frame_id)
         assert run.status == "completed" and run.data["outcome"] == "logged"
         assert _step(run, "log_event").result["logged"] is True
@@ -112,8 +120,11 @@ def test_large_gathering_notifies_operator_held_at_p1(tmp_path):
     assert notify.action_key == "notify_operator"
     assert notify.stake == "middle"
     summary = notify.result["summary"]
-    assert "Owner's Unit 1N" in summary
-    assert "11 people" in summary
+    assert "Garden Unit 1A" in summary
+    # The headcount is presented as the model's estimate, never as
+    # a proven count.
+    assert "(about 11 people, model estimate)" in summary
+    assert "(11 people)" not in summary
     assert "party of 4" in summary
     assert "Nothing was sent to the guest" in summary
     # Middle right, not earned in an empty ledger: held, nothing sent.
@@ -202,7 +213,7 @@ def test_unknown_property_event_holds_for_human():
 
 def test_malformed_event_is_a_caller_error():
     try:
-        handle_camera_event(_engine(), {"property_id": "lockport-2n"})
+        handle_camera_event(_engine(), {"property_id": "cedar-2a"})
     except ValueError:
         pass
     else:
@@ -296,7 +307,7 @@ def test_person_present_when_cleaning_window_opens_notifies():
 # -- camera offline: the switch play -----------------------------------
 
 def _offline(engine, play=None, **payload):
-    base = {"property_id": "lockport-1n", "date": "2026-10-29",
+    base = {"property_id": "cedar-1a", "date": "2026-10-29",
             "camera": "front-door", "ts": "2026-10-29T19:20:00"}
     base.update(payload)
     return handle_camera_offline_event(engine, base, play=play)
@@ -454,7 +465,7 @@ def test_post_turnover_unsettled_state_fails_safe_to_notify():
 def test_post_turnover_malformed_event_is_a_caller_error():
     try:
         handle_post_turnover_event(
-            _engine(), {"property_id": "lockport-2n",
+            _engine(), {"property_id": "cedar-2a",
                         "date": "2026-10-28", "kind": "weekly",
                         "frame_id": "f8"})
     except ValueError:
@@ -523,7 +534,7 @@ def test_explicitly_normal_view_routes_on_scene_as_before():
         "fx-view-ok": {"scene": "nothing_notable", "people_count": 0,
                        "note": "Empty driveway.", "view": "normal"}})
     run = _event(_engine(), "f1", play=CameraCheck(vision=vision),
-                 property_id="lockport-1n", date="2026-10-28",
+                 property_id="cedar-1a", date="2026-10-28",
                  frame_id="fx-view-ok")
     assert run.data["outcome"] == "logged"
     assert _step(run, "classify_frame").result["view"] == "normal"
@@ -577,13 +588,13 @@ def test_dwell_needs_the_arrival_window():
                        "note": "Still at the door.", "door": "closed"},
     })
     engine = _engine()
-    # Owner's Unit 1N on 2026-10-28 has NO arrival: same two-frame
+    # Garden Unit 1A on 2026-10-28 has NO arrival: same two-frame
     # pattern, but no arrival window, so both runs take the plain
     # stranger route and neither claims the stuck-at-the-door read.
     for frame_id, ts in (("fx-dwell-a", "2026-10-28T10:00:00"),
                          ("fx-dwell-b", "2026-10-28T10:07:00")):
         run = _event(engine, "f1", play=CameraCheck(vision=vision),
-                     property_id="lockport-1n", date="2026-10-28",
+                     property_id="cedar-1a", date="2026-10-28",
                      camera="front-door", ts=ts, frame_id=frame_id)
         assert run.data["outcome"] == "notify_operator"
         reason = _step(run, "classify_frame").result["reason"]
@@ -594,7 +605,7 @@ def test_dwell_needs_the_arrival_window():
 # -- final-list batch: guest lockout report (case #10a) -----------------
 
 def _lockout(engine, play=None, **payload):
-    base = {"property_id": "peters-house", "date": "2026-10-28",
+    base = {"property_id": "maple-house", "date": "2026-10-28",
             "camera": "front-door", "ts": "2026-10-28T16:20:00"}
     base.update(payload)
     return handle_guest_lockout_event(engine, base, play=play)
@@ -622,7 +633,7 @@ def test_lockout_report_assembles_latest_door_frame_for_operator():
 
 
 def test_lockout_report_door_open_reads_open():
-    run = _lockout(_engine(), property_id="lockport-2n",
+    run = _lockout(_engine(), property_id="cedar-2a",
                    frame_id="f14", ts="2026-10-28T15:52:00")
     assemble = _step(run, "assemble_door_frame")
     assert assemble.result["frame_id"] == "f14"
@@ -647,7 +658,7 @@ def test_lockout_unknown_property_holds_and_malformed_raises():
 # -- final-list batch: guest feels unsafe (case #49) --------------------
 
 def _unsafe(engine, play=None, **payload):
-    base = {"property_id": "lockport-2n", "date": "2026-10-28",
+    base = {"property_id": "cedar-2a", "date": "2026-10-28",
             "kind": "guest_unsafe"}
     base.update(payload)
     return handle_guest_unsafe_event(engine, base, play=play)
@@ -658,7 +669,7 @@ def test_guest_unsafe_assembles_latest_frames_urgent():
     assert run.status == "completed"
     assert run.data["outcome"] == "notify_operator"
     assemble = _step(run, "assemble_latest_frames")
-    # Studio 2N's three newest frames that day, newest first.
+    # Studio 2A's three newest frames that day, newest first.
     assert assemble.result["frames"] == ["f16", "f14", "f13"]
     notify = _step(run, "notify_operator")
     assert notify.status == "held"
@@ -673,7 +684,7 @@ def test_guest_unsafe_assembles_latest_frames_urgent():
 
 
 def test_guest_unsafe_no_frames_on_record_says_so_plainly():
-    run = _unsafe(_engine(), property_id="lockport-1n")
+    run = _unsafe(_engine(), property_id="cedar-1a")
     assert run.status == "completed"
     assert run.data["outcome"] == "notify_operator"
     assemble = _step(run, "assemble_latest_frames")
@@ -712,7 +723,7 @@ def _sunset(engine, frame, play=None, **over):
 
 
 def test_sunset_dark_entry_second_night_adds_bulb_change():
-    # The fixtures seed Studio 2N with one dark night already, so
+    # The fixtures seed Studio 2A with one dark night already, so
     # this dark read is the second night running.
     run = _sunset(_engine(), "f16")
     assert run.status == "completed"
@@ -762,10 +773,10 @@ def test_sunset_no_arrival_that_day_logs_and_skips_the_streak():
         "fx-dark-entry": {"scene": "nothing_notable", "people_count": 0,
                           "note": "Entry dark.", "lights": "off"}})
     engine = _engine()
-    # Owner's Unit 1N on 2026-10-28: nobody arriving, so a dark
+    # Garden Unit 1A on 2026-10-28: nobody arriving, so a dark
     # entry is noted, not flagged — and the streak is not touched.
     run = _sunset(engine, "f15", play=SunsetCheck(vision=vision),
-                  property_id="lockport-1n", date="2026-10-28",
+                  property_id="cedar-1a", date="2026-10-28",
                   camera="front-door", ts="2026-10-28T18:50:00",
                   frame_id="fx-dark-entry")
     assert run.data["outcome"] == "logged"
@@ -773,7 +784,7 @@ def test_sunset_no_arrival_that_day_logs_and_skips_the_streak():
     assert entry.result["route"] == "log"
     assert "no arrival today" in entry.result["reason"]
     assert _step(run, "notify_operator").status == "skipped"
-    assert engine.context.dark_nights("lockport-1n") == 0
+    assert engine.context.dark_nights("cedar-1a") == 0
 
 
 def test_sunset_unsettled_lights_fail_safe_to_notify():
@@ -796,3 +807,431 @@ def test_new_camera_plays_registered_but_never_message_triggered():
     assert match(Decision(Category.ACT, 0.9),
                  "There are people outside, the camera went off",
                  {}) is None
+
+
+# ---------------------------------------------------------------------
+# Batch 2: classification schema additions (#46 animal, #32 ground)
+# ---------------------------------------------------------------------
+
+def _held(run):
+    return _step(run, "notify_operator").status == "held"
+
+def test_schema_ground_parses_and_validates():
+    ok = parse_classification(
+        '{"scene": "nothing_notable", "ground": "snow_covered", '
+        '"note": "x"}')
+    assert ok.ground == "snow_covered"
+    legacy = parse_classification(
+        '{"scene": "nothing_notable", "note": "x"}')
+    assert legacy.ground == "unknown"
+    assert parse_classification(
+        '{"scene": "nothing_notable", "ground": "snowy"}') is None
+    assert parse_classification(
+        '{"scene": "nothing_notable", "ground": null}') is None
+
+
+def test_schema_animal_parses_and_validates():
+    ok = parse_classification(
+        '{"scene": "animal", "animal": "dog_sized", "note": "x"}')
+    assert ok.animal == "dog_sized"
+    legacy = parse_classification('{"scene": "animal", "note": "x"}')
+    assert legacy.animal == "unknown"
+    assert parse_classification(
+        '{"scene": "animal", "animal": "big"}') is None
+    assert parse_classification(
+        '{"scene": "animal", "animal": null}') is None
+
+
+# ---------------------------------------------------------------------
+# Batch 2: dog with no pet on the booking (#46)
+# ---------------------------------------------------------------------
+
+def test_dog_arriving_with_party_flags_operator_with_exact_language():
+    run = _event(_engine(), "f19")
+    assert run.data["outcome"] == "notify_operator"
+    cls = _step(run, "classify_frame")
+    assert cls.result["animal"] == "dog_sized"
+    assert cls.result["reason"] == DOG_REASON
+    assert _held(run)
+    notify = _step(run, "notify_operator")
+    assert "a dog-sized animal was seen arriving with the party" \
+        in notify.result["summary"]
+    assert "the booking lists no pet" in notify.result["summary"]
+    assert "Nothing has been charged" in notify.result["summary"]
+    assert "service animals are exempt" in notify.result["summary"]
+    assert "frame f19" in notify.result["summary"]
+    # The only message path in Play 7 never fires on this case.
+    assert all(s.action_key != "message_guest" for s in run.steps)
+
+
+def test_dog_sized_animal_in_arrival_window_flags_operator():
+    vision = FixtureVision({"fx-dog-yard": {
+        "scene": "animal", "people_count": None, "animal": "dog_sized",
+        "note": "A dog in the yard as the party arrives."}})
+    run = _event(_engine(), "f19", ts="2026-10-28T16:05:00",
+                 frame_id="fx-dog-yard",
+                 play=CameraCheck(vision=vision))
+    assert run.data["outcome"] == "notify_operator"
+    assert _step(run, "classify_frame").result["reason"] == DOG_REASON
+
+
+def test_dog_with_pet_on_booking_logs_only():
+    data = default_fixture_data()
+    data["arrivals"]["maple-house|2026-10-28"]["pet_on_booking"] = True
+    run = _event(_engine(data=data), "f19")
+    assert run.data["outcome"] == "logged"
+    assert _step(run, "notify_operator").status == "skipped"
+    assert _step(run, "log_event").result["logged"] is True
+
+
+def test_lone_dog_at_night_logs_only():
+    run = _event(_engine(), "f20")
+    assert run.data["outcome"] == "logged"
+    assert _step(run, "notify_operator").status == "skipped"
+    assert _step(run, "classify_frame").result["route"] == "log"
+
+
+def test_small_animal_with_arriving_party_logs_only():
+    vision = FixtureVision({"fx-cat-party": {
+        "scene": "animal", "people_count": None, "animal": "small",
+        "note": "A cat slips past the arriving guests."}})
+    run = _event(_engine(), "f19", ts="2026-10-28T16:02:00",
+                 frame_id="fx-cat-party",
+                 play=CameraCheck(vision=vision))
+    assert run.data["outcome"] == "logged"
+
+
+# ---------------------------------------------------------------------
+# Batch 2: snow at an empty home — morning check (#32)
+# ---------------------------------------------------------------------
+
+def _morning(engine, frame_id, play=None, **overrides):
+    rec = STAGED_FRAMES[frame_id]
+    payload = {"property_id": rec["property_id"], "date": str(rec["date"]),
+               "kind": "morning_check", "camera": rec["camera"],
+               "ts": rec["ts"], "frame_id": frame_id}
+    payload.update(overrides)
+    return handle_morning_check_event(engine, payload, play=play)
+
+
+def test_snow_at_empty_home_flags_shoveler_not_urgent():
+    run = _morning(_engine(), "f21")
+    assert run.play == "camera_morning_check"
+    assert run.data["outcome"] == "notify_operator"
+    cls = _step(run, "classify_ground")
+    assert cls.result["ground"] == "snow_covered"
+    assert cls.result["urgent"] is False
+    assert _held(run)
+    notify = _step(run, "notify_operator")
+    assert "send the shoveler" in notify.result["summary"]
+    assert notify.result["urgent"] is False
+    assert all(s.action_key != "message_guest" for s in run.steps)
+
+
+def test_snow_with_guest_and_turnover_due_is_urgent():
+    run = _morning(_engine(), "f22")
+    assert run.data["outcome"] == "notify_operator"
+    cls = _step(run, "classify_ground")
+    assert cls.result["ground"] == "snow_covered"
+    assert cls.result["urgent"] is True
+    notify = _step(run, "notify_operator")
+    assert "a cleaner or guest is due at this home today" \
+        in notify.result["summary"]
+
+
+def test_clear_ground_logs_quietly():
+    run = _morning(_engine(), "f23")
+    assert run.data["outcome"] == "logged"
+    assert _step(run, "notify_operator").status == "skipped"
+    assert _step(run, "log_event").result["logged"] is True
+
+
+def test_unsettled_ground_notifies_fail_safe():
+    run = _morning(_engine(), "f24")
+    assert run.data["outcome"] == "notify_operator"
+    assert _step(run, "classify_ground").result["ground"] == "unknown"
+
+
+def test_occupied_home_is_skipped_quietly():
+    run = _morning(_engine(), "f25")
+    assert run.data["outcome"] == "logged"
+    cls = _step(run, "classify_ground")
+    assert "stay is in progress" in cls.result["reason"]
+
+
+def test_snow_before_midmorning_deadline_is_noted_not_flagged():
+    vision = FixtureVision({"fx-early-snow": {
+        "scene": "nothing_notable", "people_count": None,
+        "ground": "snow_covered", "note": "Snow down at first light."}})
+    run = handle_morning_check_event(
+        _engine(), {"property_id": "maple-house", "date": "2026-10-29",
+                    "kind": "morning_check", "camera": "front-door",
+                    "ts": "2026-10-29T09:30:00",
+                    "frame_id": "fx-early-snow"},
+        play=MorningCheck(vision=vision))
+    assert run.data["outcome"] == "logged"
+    assert "before the mid-morning deadline" in \
+        _step(run, "classify_ground").result["reason"]
+
+
+def test_morning_check_malformed_event_rejected():
+    with pytest.raises(ValueError):
+        handle_morning_check_event(
+            _engine(), {"property_id": "maple-house",
+                        "date": "2026-10-29", "kind": "weekly",
+                        "frame_id": "f21"})
+    with pytest.raises(ValueError):
+        handle_morning_check_event(
+            _engine(), {"property_id": "maple-house",
+                        "date": "2026-10-29", "kind": "morning_check"})
+
+
+# ---------------------------------------------------------------------
+# Batch 2: several cameras drop at once — area outage (#36)
+# ---------------------------------------------------------------------
+
+def _burst_events():
+    return [
+        {"property_id": "cedar-1a", "date": "2026-10-29",
+         "camera": "front-door", "ts": "2026-10-29T19:20:00"},
+        {"property_id": "cedar-2a", "date": "2026-10-29",
+         "camera": "front-door", "ts": "2026-10-29T19:26:00"},
+        {"property_id": "cedar-1a", "date": "2026-10-29",
+         "camera": "backyard", "ts": "2026-10-29T19:31:00"},
+    ]
+
+
+def test_outage_below_threshold_changes_nothing():
+    _reset_outage_correlator()
+    out = handle_offline_burst(_engine(), _burst_events()[:2])
+    assert out["cluster"] is None
+    assert out["cluster_run"] is None
+    assert len(out["runs"]) == 2
+    for run in out["runs"]:
+        assert all(s.name != "outage_cluster" for s in run.steps)
+
+
+def test_outage_cluster_one_notification_and_marked_members():
+    _reset_outage_correlator()
+    out = handle_offline_burst(_engine(), _burst_events())
+    cluster = out["cluster"]
+    assert cluster is not None
+    assert cluster["cameras"] == 3
+    assert cluster["properties"] == ["cedar-1a", "cedar-2a"]
+    assert cluster["span_minutes"] == 11
+    cluster_run = out["cluster_run"]
+    assert cluster_run is not None
+    assert cluster_run.play == "camera_outage_cluster"
+    assert cluster_run.data["outcome"] == "area_outage_notified"
+    assert _held(cluster_run)
+    notify = _step(cluster_run, "notify_operator")
+    assert "Likely area power or internet outage" \
+        in notify.result["summary"]
+    assert "Garden Unit 1A" in notify.result["summary"]
+    assert "Studio 2A" in notify.result["summary"]
+    # Every member run is marked with the same cluster_id.
+    for run in out["runs"]:
+        mark = _step(run, "outage_cluster")
+        assert mark is not None
+        assert mark.result["cluster_id"] == cluster["cluster_id"]
+
+
+def test_outage_cluster_refire_joins_quietly():
+    _reset_outage_correlator()
+    engine = _engine()
+    first = handle_offline_burst(engine, _burst_events())
+    assert first["cluster_run"] is not None
+    second = handle_offline_burst(engine, _burst_events())
+    assert second["cluster_run"] is None
+    assert second["cluster"] is None
+    for run in second["runs"]:
+        mark = _step(run, "outage_cluster")
+        assert mark is not None
+        assert mark.result["cluster_id"] == first["cluster"]["cluster_id"]
+
+
+def _maple_offline(ts="2026-10-29T19:34:00"):
+    # A fourth camera, at a third Cedar Hollow property, inside the window.
+    return {"property_id": "maple-house", "date": "2026-10-29",
+            "camera": "front-door", "ts": ts}
+
+
+def test_outage_fourth_camera_later_burst_merges_quietly():
+    _reset_outage_correlator()
+    engine = _engine()
+    first = handle_offline_burst(engine, _burst_events())
+    cid = first["cluster"]["cluster_id"]
+    later = handle_offline_burst(engine, [_maple_offline()])
+    # Same outage, grown footprint: no second notification.
+    assert later["cluster_run"] is None and later["cluster_runs"] == []
+    assert later["cluster"] is None
+    mark = _step(later["runs"][0], "outage_cluster")
+    assert mark.result["cluster_id"] == cid
+    # One cluster on record, now carrying the fourth camera.
+    assert list(_NOTIFIED_CLUSTERS) == [cid]
+    assert len(_NOTIFIED_CLUSTERS[cid]["signature"]) == 4
+    assert len(_NOTIFIED_CLUSTERS[cid]["members"]) == 4
+
+
+def test_outage_fourth_camera_same_burst_one_notification():
+    _reset_outage_correlator()
+    out = handle_offline_burst(_engine(), _burst_events() + [_maple_offline()])
+    assert len(out["cluster_runs"]) == 1
+    cid = out["cluster"]["cluster_id"]
+    # The fourth camera is recorded and marked under the announced
+    # cluster, not as a second cluster nobody hears about.
+    for run in out["runs"]:
+        assert _step(run, "outage_cluster").result["cluster_id"] == cid
+    assert list(_NOTIFIED_CLUSTERS) == [cid]
+    assert len(_NOTIFIED_CLUSTERS[cid]["members"]) == 4
+
+
+def test_outage_two_areas_in_one_burst_each_notified():
+    _reset_outage_correlator()
+    data = default_fixture_data()
+    for pid in ("area-b-1", "area-b-2"):
+        prop = dict(data["properties"]["cedar-1a"])
+        prop.update(name=f"Fixture {pid}", area="Area B")
+        data["properties"][pid] = prop
+    area_b = [
+        {"property_id": "area-b-1", "date": "2026-10-29",
+         "camera": "front-door", "ts": "2026-10-29T19:22:00"},
+        {"property_id": "area-b-2", "date": "2026-10-29",
+         "camera": "front-door", "ts": "2026-10-29T19:24:00"},
+        {"property_id": "area-b-1", "date": "2026-10-29",
+         "camera": "backyard", "ts": "2026-10-29T19:28:00"},
+    ]
+    out = handle_offline_burst(_engine(data=data), _burst_events() + area_b)
+    # Two areas down are two outages: each gets its one notification.
+    assert len(out["cluster_runs"]) == 2
+    assert sorted(c["area"] for c in out["clusters"]) \
+        == ["Area B", "Cedar Hollow"]
+    assert out["cluster_run"] is out["cluster_runs"][0]
+    for cluster_run in out["cluster_runs"]:
+        assert cluster_run.data["outcome"] == "area_outage_notified"
+        assert _held(cluster_run)
+    by_area = {c["area"]: c["cluster_id"] for c in out["clusters"]}
+    assert len(set(by_area.values())) == 2
+    for run in out["runs"]:
+        area = "Area B" if run.property_id.startswith("area-b") \
+            else "Cedar Hollow"
+        assert _step(run, "outage_cluster").result["cluster_id"] \
+            == by_area[area]
+
+
+def test_outage_wide_window_forms_no_cluster():
+    _reset_outage_correlator()
+    events = [
+        {"property_id": "cedar-1a", "date": "2026-10-29",
+         "camera": "front-door", "ts": "2026-10-29T19:00:00"},
+        {"property_id": "cedar-2a", "date": "2026-10-29",
+         "camera": "front-door", "ts": "2026-10-29T19:40:00"},
+        {"property_id": "cedar-1a", "date": "2026-10-29",
+         "camera": "backyard", "ts": "2026-10-29T20:20:00"},
+    ]
+    out = handle_offline_burst(_engine(), events)
+    assert out["cluster"] is None
+    assert out["cluster_run"] is None
+
+
+def test_outage_winter_vacant_home_freeze_risk():
+    _reset_outage_correlator()
+    events = [
+        {"property_id": "cedar-1a", "date": "2027-01-15",
+         "camera": "front-door", "ts": "2027-01-15T03:10:00"},
+        {"property_id": "cedar-2a", "date": "2027-01-15",
+         "camera": "front-door", "ts": "2027-01-15T03:16:00"},
+        {"property_id": "cedar-1a", "date": "2027-01-15",
+         "camera": "backyard", "ts": "2027-01-15T03:22:00"},
+    ]
+    out = handle_offline_burst(_engine(), events)
+    assert out["cluster_run"] is not None
+    notify = _step(out["cluster_run"], "notify_operator")
+    assert notify.result["winter_freeze_risk"] is True
+    assert "freeze risk" in notify.result["summary"]
+    assert "outage at an empty home in winter is a freeze risk" \
+        in notify.result["summary"]
+
+
+# ---------------------------------------------------------------------
+# Batch 2: camera upkeep (#58)
+# ---------------------------------------------------------------------
+
+def _upkeep(engine, data=None):
+    return handle_camera_upkeep_event(
+        engine, {"date": "2026-10-28", "kind": "camera_upkeep"})
+
+
+def test_upkeep_report_notes_carry_their_evidence():
+    run = _upkeep(_engine())
+    assert run.play == "camera_upkeep"
+    assert run.data["outcome"] == "upkeep_report"
+    assert _held(run)
+    build = _step(run, "build_report")
+    notes = build.result["notes"]
+    assert len(notes) == 3
+    by_task = {n["task"]: n for n in notes}
+    wifi = by_task["check the WiFi at Garden Unit 1A, Cedar Hollow"]
+    assert "3 days" in wifi["evidence"]
+    lens_2a = by_task["wipe the lens at Studio 2A, Cedar Hollow"]
+    assert "41 of 46" in lens_2a["evidence"]
+    lens_maple = by_task["wipe the lens at Maple Street House"]
+    assert "18 of 30" in lens_maple["evidence"]
+    notify = _step(run, "notify_operator")
+    assert "nothing was sent to anyone" in notify.result["summary"]
+    assert all(s.action_key != "message_guest" for s in run.steps)
+    assert all(s.action_key != "message_cleaner" for s in run.steps)
+
+
+def test_upkeep_below_thresholds_logs_without_notes():
+    data = default_fixture_data()
+    data["camera_history"] = [{
+        "property_id": "cedar-1a", "camera": "front-door",
+        "offline_events": [{"date": "2026-10-25", "time": "07:03"},
+                           {"date": "2026-10-26", "time": "07:08"}],
+        "night_motion": 5, "night_trivial": 2,
+        "unclear_frames": 1, "frames_total": 30,
+    }]
+    run = _upkeep(_engine(data=data))
+    assert run.data["outcome"] == "logged"
+    assert _step(run, "build_report").result["notes"] == []
+    assert _step(run, "notify_operator").status == "skipped"
+    assert _step(run, "log_event").result["logged"] is True
+
+
+def test_upkeep_no_history_reports_nothing_was_checked():
+    # An empty fleet history is not a clean bill of health: the
+    # operator is told nothing was checked.
+    data = default_fixture_data()
+    data["camera_history"] = []
+    run = _upkeep(_engine(data=data))
+    assert run.data["outcome"] == "upkeep_report"
+    build = _step(run, "build_report")
+    assert build.result["cameras_checked"] == 0
+    assert build.result["notes"] == []
+    assert _step(run, "log_event").status == "skipped"
+    assert _held(run)
+    summary = _step(run, "notify_operator").result["summary"]
+    assert "no camera history on record — nothing was checked" in summary
+    assert "not a clean bill of health" in summary
+    assert "Nothing was sent to anyone" in summary
+    assert all(s.action_key != "message_guest" for s in run.steps)
+    assert all(s.action_key != "message_cleaner" for s in run.steps)
+
+
+def test_upkeep_malformed_event_rejected():
+    with pytest.raises(ValueError):
+        handle_camera_upkeep_event(_engine(), {})
+    with pytest.raises(ValueError):
+        handle_camera_upkeep_event(
+            _engine(), {"date": "2026-10-28", "kind": "weekly"})
+
+
+def test_batch2_plays_registered_and_neutral_message_matches_none():
+    from jev.plays import get, match
+    assert get("camera_morning_check") is not None
+    assert get("camera_upkeep") is not None
+    assert get("camera_outage_cluster") is not None
+    decision = Decision(Category.CONFIRM, 0.9)
+    assert match(decision, "There are people outside, the camera "
+                           "went off", {}) is None

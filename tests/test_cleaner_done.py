@@ -17,7 +17,7 @@ def _engine(ledger=None, log_path=None, data=None):
 
 def _event(engine, prop, date=DATE, **extra):
     payload = {"property_id": prop, "date": date,
-               "cleaner_id": "cleaner-cristina", "finished_at": "1:32 PM"}
+               "cleaner_id": "cleaner-lena", "finished_at": "1:32 PM"}
     payload.update(extra)
     return handle_cleaner_done_event(engine, payload)
 
@@ -36,7 +36,7 @@ def test_registered_but_never_message_triggered():
 
 def test_happy_path_ready_message_held_by_default(tmp_path):
     log = str(tmp_path / "runs.jsonl")
-    run = _event(_engine(log_path=log), "lockport-2n")
+    run = _event(_engine(log_path=log), "cedar-2a")
     assert run.status == "completed" and run.data["outcome"] == "ready"
     assert _step(run, "wait_cleaner_done").status == "done"
     match_step = _step(run, "match_arrival")
@@ -48,7 +48,7 @@ def test_happy_path_ready_message_held_by_default(tmp_path):
 
     send = _step(run, "send_guest_ready")
     draft = send.result["draft"]
-    assert "Dana" in draft and "Studio 2N, Lockport" in draft
+    assert "Dana" in draft and "Studio 2A, Cedar Hollow" in draft
     assert "ready for you now" in draft
     assert "1:32 PM" in draft                    # cleaner's finish time
     assert "4:00 PM" in draft                    # standard check-in
@@ -71,7 +71,7 @@ def test_earned_guest_right_sends_simulated():
     ledger = {"categories": {"message_guest": {
         "decisive_n": 30, "decisive_accuracy": 0.96,
         "high_conf_accuracy": 0.99}}}
-    run = _event(_engine(ledger=ledger), "lockport-2n")
+    run = _event(_engine(ledger=ledger), "cedar-2a")
     send = _step(run, "send_guest_ready")
     assert send.required_right == "send_with_log"
     assert send.status == "done"
@@ -82,7 +82,7 @@ def test_earned_guest_right_sends_simulated():
 
 def test_problem_flag_holds_for_human_and_sends_nothing(tmp_path):
     log = str(tmp_path / "runs.jsonl")
-    run = _event(_engine(log_path=log), "peters-house")
+    run = _event(_engine(log_path=log), "maple-house")
     assert run.status == "held_for_human"
     assert "Cracked wine glass" in run.hold_reason
     verify = _step(run, "verify_clean")
@@ -99,10 +99,10 @@ def test_problem_flag_holds_for_human_and_sends_nothing(tmp_path):
 
 def test_no_arrival_today_logs_and_closes():
     data = default_fixture_data()
-    data["clean_reports"]["lockport-1n|2026-10-28"] = {
+    data["clean_reports"]["cedar-1a|2026-10-28"] = {
         "status": "complete", "finished_at": "11:05 AM",
-        "cleaner_id": "cleaner-cristina", "problem_flag": ""}
-    run = _event(_engine(data=data), "lockport-1n")
+        "cleaner_id": "cleaner-lena", "problem_flag": ""}
+    run = _event(_engine(data=data), "cedar-1a")
     assert run.status == "completed" and run.data["outcome"] == "no_arrival"
     assert _step(run, "match_arrival").result["arrival_today"] is False
     assert _step(run, "verify_clean").status == "skipped"
@@ -112,8 +112,8 @@ def test_no_arrival_today_logs_and_closes():
 
 def test_event_claim_without_completed_clean_fails_safe():
     data = default_fixture_data()
-    del data["clean_reports"]["lockport-2n|2026-10-28"]
-    run = _event(_engine(data=data), "lockport-2n")
+    del data["clean_reports"]["cedar-2a|2026-10-28"]
+    run = _event(_engine(data=data), "cedar-2a")
     assert run.status == "held_for_human"
     assert "no completed clean" in run.hold_reason
     assert _step(run, "send_guest_ready").status == "pending"
