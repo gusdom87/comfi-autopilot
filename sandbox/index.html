@@ -8,42 +8,62 @@
 <link rel="stylesheet" media="print" onload="this.media='all'"
       href="https://fonts.googleapis.com/css2?family=Gabarito:wght@500;600;700;800&amp;family=Instrument+Sans:wght@400;500;600;700&amp;display=swap">
 <style>
-  /* ---- tokens (design/spec.md) ------------------------------------ */
+  /* ---- tokens (design/spec-v2.md, over design/spec.md) ------------ */
   :root {
     --font-display: "Gabarito", "Arial", sans-serif;
     --font-text: "Instrument Sans", system-ui, sans-serif;
-    --fs-h1: 40px; --fs-h2: 24px; --fs-h3: 20px;
+    --fs-h1: 40px; --fs-sec: 40px; --fs-h2: 24px; --fs-h3: 20px;
     --fs-body: 16px; --lh-body: 24px; --fs-small: 14px; --fs-caption: 12px;
 
     --ink: #101E3C; --navy: #101E3C;
-    --cream: #F7F3EB; --panel: #FFFDF8; --well: #F1EAD9;
-    --amber: #C7924B; --tan: #D9B07A; --line: #D9D4C7;
+    --cream: #F7F3EB; --panel: #FFFDF8; --well: #F1EAD9; --tray: #EDE5D3; --sunk: #E6DAC1;
+    --amber: #C7924B; --tan: #D9B07A; --line: #D9D4C7; --rule: #CDC3AE;
     --green: #2F7D5B; --danger: #B24A3A; --muted: #5B6472;
 
     --r-sm: 6px; --r-lg: 14px; --r-round: 50%;
 
     --pressed: inset 0 1px 0 rgba(247,243,235,.8), 1px 1px 0 rgba(16,30,60,.10),
                3px 5px 6px rgba(16,30,60,.08), 12px 18px 28px rgba(16,30,60,.10);
-    /* nested rows (inbox rows, run steps): the stack without its far ambient layer */
+    /* nested rows (run steps, buttons): the stack without its far ambient layer */
     --pressed-row: inset 0 1px 0 rgba(247,243,235,.8), 1px 1px 0 rgba(16,30,60,.10),
                    3px 5px 6px rgba(16,30,60,.08);
+    /* bevel: a lit edge top-left, a shaded edge bottom-right, on every raised surface */
+    --bevel: inset 1px 1px 0 rgba(255,255,255,.95), inset -1px -1px 0 rgba(16,30,60,.10);
+    /* framed: a bevelled card set in a pale mat with its own outer line (inbox rows) */
+    --mat: 0 0 0 4px #F2EBDC, 0 0 0 5px rgba(16,30,60,.12);
+    --framed: var(--bevel), var(--mat), 2px 4px 0 1px rgba(16,30,60,.05), 5px 9px 16px rgba(16,30,60,.13);
     --deboss: inset 4px 6px 10px rgba(16,30,60,.14), inset 1px 1px 2px rgba(16,30,60,.12),
               inset -1px -1px 0 rgba(247,243,235,.85);
+    /* tray: pressed clearly deeper than any card shadow, with a lit lower lip */
+    --tray-deep: inset 9px 14px 26px rgba(16,30,60,.17), inset 2px 3px 5px rgba(16,30,60,.17),
+                 inset -2px -2px 0 rgba(255,253,248,.95), 0 1px 0 rgba(255,253,248,.95);
+    /* a well sunk inside the tray: darker floor, tighter and deeper shadow */
+    --well-sunk: inset 5px 8px 14px rgba(16,30,60,.20), inset 1px 2px 3px rgba(16,30,60,.20),
+                 inset -1px -1px 0 rgba(255,253,248,.95);
 
     /* paper grain: offset speckle tiles of unequal size, CSS only */
-    --grain: radial-gradient(circle, rgba(16,30,60,.07) 0 .5px, transparent .9px),
-             radial-gradient(circle, rgba(16,30,60,.045) 0 .5px, transparent .9px),
-             radial-gradient(circle, rgba(199,146,75,.08) 0 .6px, transparent 1px);
-    --grain-size: 7px 7px, 11px 13px, 17px 19px;
+    /* co-prime tiles at similar weight so no single lattice dominates; light flecks read as paper fibre */
+    --grain: radial-gradient(circle, rgba(16,30,60,.085) 0 .5px, transparent .95px),
+             radial-gradient(circle, rgba(16,30,60,.07) 0 .55px, transparent 1px),
+             radial-gradient(circle, rgba(199,146,75,.16) 0 .7px, transparent 1.2px),
+             radial-gradient(circle, rgba(16,30,60,.065) 0 .9px, transparent 1.5px),
+             radial-gradient(circle, rgba(255,255,255,.7) 0 .7px, transparent 1.2px),
+             radial-gradient(circle, rgba(16,30,60,.05) 0 .5px, transparent .9px);
+    --grain-size: 5px 7px, 11px 13px, 17px 19px, 29px 23px, 13px 11px, 37px 31px;
+    --grain-pos: 0 0, 3px 5px, 8px 2px, 13px 17px, 6px 9px, 21px 4px;
+    --grain-light: radial-gradient(circle, rgba(247,243,235,.07) 0 .55px, transparent 1px),
+                   radial-gradient(circle, rgba(217,176,122,.08) 0 .7px, transparent 1.2px);
+    --grain-light-size: 7px 7px, 17px 19px;
   }
-  @media (max-width: 719px) { :root { --fs-h1: 30px; --fs-h2: 20px; --fs-h3: 18px; } }
+  @media (max-width: 1023px) { :root { --fs-sec: 32px; } }
+  @media (max-width: 719px) { :root { --fs-h1: 30px; --fs-sec: 28px; --fs-h2: 20px; --fs-h3: 18px; } }
 
   /* ---- base ------------------------------------------------------- */
   * { box-sizing: border-box; }
   html { scroll-behavior: smooth; }
   body { margin: 0; color: var(--ink); font: 400 var(--fs-body)/var(--lh-body) var(--font-text);
          background-color: var(--cream); background-image: var(--grain); background-size: var(--grain-size);
-         -webkit-font-smoothing: antialiased; }
+         background-position: var(--grain-pos); -webkit-font-smoothing: antialiased; }
   h1, h2, h3 { margin: 0; font-family: var(--font-display); font-weight: 700; }
   p { margin: 0 0 12px; }
   code { font: 500 .88em/1 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 2px 5px;
@@ -56,14 +76,15 @@
   .fine { color: var(--muted); font-size: var(--fs-small); line-height: 20px; }
   .err { color: var(--danger); font-weight: 600; }
   .panel { padding: 24px; border-radius: var(--r-lg); background-color: var(--panel);
-           background-image: var(--grain); background-size: var(--grain-size); box-shadow: var(--pressed); }
+           background-image: var(--grain); background-size: var(--grain-size); background-position: var(--grain-pos);
+           box-shadow: var(--bevel), var(--pressed); }
 
   /* ---- controls --------------------------------------------------- */
   label { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; min-width: 0; }
   select, textarea { font: 400 var(--fs-body)/var(--lh-body) var(--font-text); color: var(--ink);
                      letter-spacing: 0; text-transform: none; }
   select { -webkit-appearance: none; appearance: none; min-width: 0; max-width: 100%; padding: 10px 40px 10px 14px;
-           border: 1px solid var(--line); border-radius: var(--r-sm); cursor: pointer; box-shadow: var(--pressed-row);
+           border: 1px solid var(--line); border-radius: var(--r-sm); cursor: pointer; box-shadow: var(--bevel), var(--pressed-row);
            background: var(--panel) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%23101E3C' stroke-width='1.8'/%3E%3C/svg%3E") no-repeat right 14px center / 12px 8px; }
   textarea { display: block; width: 100%; padding: 16px 18px; border: 0; border-radius: var(--r-sm);
              background: var(--well); box-shadow: var(--deboss); resize: vertical; }
@@ -71,22 +92,25 @@
   button { font: inherit; color: inherit; }
   .bigbtn, #go { display: inline-flex; align-items: center; gap: 8px; margin: 0; padding: 12px 18px;
                  border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel); color: var(--ink);
-                 font: 600 15px/20px var(--font-text); text-align: left; cursor: pointer; box-shadow: var(--pressed-row);
+                 font: 600 15px/20px var(--font-text); text-align: left; cursor: pointer; box-shadow: var(--bevel), var(--pressed-row);
                  transition: transform .08s ease, box-shadow .08s ease, background-color .08s ease; }
   .bigbtn:active, #go:active { transform: translate(1px, 1px); box-shadow: var(--deboss); }
   .bigbtn.is-on { background: var(--well); box-shadow: inset 4px 0 0 var(--amber), var(--deboss); }
-  #go, #ec-run { padding: 13px 28px; border-color: transparent; background: var(--amber); color: var(--navy); font-weight: 700; }
-  #ec-done, #ih-eta, #ih-done { border-color: transparent; background: var(--navy); color: var(--cream); }
+  #go, #ec-run { padding: 13px 30px; border-color: transparent; background: var(--amber); color: var(--navy); font-weight: 700;
+                 box-shadow: inset 1px 1px 0 rgba(255,255,255,.35), inset -1px -1px 0 rgba(16,30,60,.18), var(--pressed-row); }
+  #ec-done, #ih-eta, #ih-done { border-color: transparent; background: var(--navy); color: var(--cream);
+                                box-shadow: inset 1px 1px 0 rgba(247,243,235,.16), var(--pressed-row); }
 
   /* ---- shell: navy rail + main ------------------------------------ */
-  .shell { display: grid; grid-template-columns: 248px minmax(0, 1fr); gap: 24px; align-items: start;
+  .shell { display: grid; grid-template-columns: 264px minmax(0, 1fr); gap: 26px; align-items: start;
            max-width: 1560px; margin: 0 auto; padding: 16px; }
-  .main { display: grid; gap: 28px; min-width: 0; }
+  .main { display: grid; gap: 34px; min-width: 0; }
   .rail { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 28px; height: calc(100vh - 32px);
-          overflow-y: auto; padding: 28px 14px 18px; border-radius: var(--r-lg); background: var(--navy);
-          color: var(--cream); box-shadow: var(--pressed); }
+          overflow-y: auto; padding: 32px 16px 20px; border-radius: var(--r-lg); color: var(--cream);
+          background-color: var(--navy); background-image: var(--grain-light); background-size: var(--grain-light-size);
+          box-shadow: inset 1px 1px 0 rgba(247,243,235,.10), inset -1px -1px 0 rgba(0,0,0,.25), var(--pressed); }
   .rail :focus-visible { outline-color: var(--cream); }
-  .rail-top { display: grid; gap: 28px; }
+  .rail-top { display: grid; gap: 40px; }
   .wordmark { padding: 0 10px; font: 800 24px/1 var(--font-display); letter-spacing: -.02em; white-space: nowrap; }
   .wordmark .dot { display: inline-block; width: .24em; height: .24em; margin-left: .05em;
                    border-radius: var(--r-round); background: var(--amber); }
@@ -99,127 +123,178 @@
              border-radius: var(--r-round); background: var(--amber); }
   .masthead-mark { font-family: var(--font-display); font-weight: 800; line-height: 1;
                    letter-spacing: -.02em; color: var(--ink); }
-  .railnav { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
-  .railnav a { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: var(--r-sm);
-               color: var(--cream); text-decoration: none; opacity: .8;
-               font: 600 13px/1 var(--font-text); letter-spacing: .14em; text-transform: uppercase; }
-  .railnav a[aria-current] { opacity: 1; background: rgba(247,243,235,.09); box-shadow: inset 3px 0 0 var(--tan); }
-  .railnav svg, .strip svg { flex: none; fill: none; stroke: currentColor; stroke-width: 1.6;
-                             stroke-linecap: round; stroke-linejoin: round; }
-  .railnav svg { width: 20px; height: 20px; }
-  .p1 { margin-top: auto; padding: 16px 10px 2px; border-top: 1px solid rgba(247,243,235,.14); }
+  .railnav { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+  .railnav a { display: flex; align-items: baseline; gap: 12px; padding: 13px 12px 11px; border-radius: var(--r-sm);
+               color: var(--cream); text-decoration: none; opacity: .74;
+               font: 700 21px/1 var(--font-display); letter-spacing: .01em; text-transform: uppercase; }
+  .railnav .nav-s { flex: none; align-self: center; width: 11px; height: 11px; }
+  .railnav .nav-s svg { display: block; width: 100%; height: 100%; fill: var(--amber); }
+  .railnav a[aria-current] { opacity: 1; background: rgba(247,243,235,.08);
+                             box-shadow: inset 3px 0 0 var(--tan), inset 0 1px 0 rgba(247,243,235,.07); }
+  .p1 { margin-top: auto; padding: 18px 10px 2px; border-top: 1px solid rgba(247,243,235,.14); }
   .p1 .cap { color: var(--tan); }
-  .p1-rung { display: block; margin: 6px 0 8px; font: 700 22px/1.05 var(--font-display);
-             letter-spacing: -.01em; text-transform: uppercase; }
+  .p1-rung { display: block; margin: 8px 0 10px; font: 800 27px/1.02 var(--font-display);
+             letter-spacing: -.01em; text-transform: uppercase; color: var(--tan); }
   .p1 p { margin: 0 0 8px; font-size: var(--fs-small); line-height: 20px; opacity: .88; }
 
   .masthead { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 32px;
-              align-items: start; padding: 14px 6px 0; }
+              align-items: start; padding: 14px 6px 24px; border-bottom: 1px solid var(--rule); }
   .masthead h1 { font-size: var(--fs-h1); }
-  .masthead p { max-width: 80ch; margin: 0; }
+  .masthead p { max-width: 80ch; margin: 0; font-size: 15px; line-height: 23px; }
 
-  /* ---- triage console: inbox + detail ----------------------------- */
+  /* ---- editorial section heads: 01. TRIAGE. 02. PLAYS. 03. CAMERAS. -- */
   #triage, #plays, #cameras, .play { scroll-margin-top: 16px; }
-  .console { display: grid; grid-template-columns: minmax(320px, 410px) minmax(0, 1fr); gap: 20px; align-items: start; }
-  .inbox { padding: 22px 16px 16px; }
+  .triage, .plays, .cams { display: grid; gap: 20px; min-width: 0; }
+  .sec-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between;
+              gap: 6px 24px; padding: 0 4px; }
+  .sec-title { font: 800 var(--fs-sec)/1 var(--font-display); letter-spacing: -.02em; }
+  .sec-s { display: inline-block; width: .42em; height: .42em; margin-right: .24em; }
+  .sec-s svg { display: block; width: 100%; height: 100%; fill: var(--amber); }
+  .sec-deck { margin: 0; color: var(--muted); font: 600 var(--fs-caption)/16px var(--font-text);
+              letter-spacing: .14em; text-transform: uppercase; }
+
+  /* ---- triage console: inbox + detail tray ------------------------ */
+  .console { display: grid; grid-template-columns: minmax(320px, 400px) minmax(0, 1fr); gap: 24px; align-items: start; }
+  .inbox { padding: 22px 18px 22px; }
   .inbox-head { display: flex; align-items: center; gap: 12px; padding: 0 6px; }
-  .inbox-head h2 { font-size: var(--fs-h2); }
+  .inbox-head h3 { font-size: 22px; }
   .count { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: var(--r-round);
-           background: var(--amber); color: var(--navy); font: 700 14px/1 var(--font-display); }
-  .inbox > .cap { padding: 8px 6px 14px; }
-  .rows { display: grid; gap: 10px; }
-  .chip { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: center; width: 100%;
-          margin: 0; padding: 14px 14px 14px 16px; border: 0; border-radius: var(--r-sm); background: var(--panel);
-          text-align: left; cursor: pointer; box-shadow: var(--pressed-row); }
-  .chip:active { box-shadow: var(--deboss); }
-  .chip.is-selected { background: linear-gradient(rgba(217,176,122,.24), rgba(217,176,122,.24)), var(--panel);
-                      box-shadow: inset 4px 0 0 var(--amber), var(--pressed-row); }
-  .row-title { display: block; font: 700 17px/22px var(--font-display); }
-  .row-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
-              margin-top: 3px; color: var(--muted); font-size: var(--fs-small); line-height: 20px; }
-  .row-side { display: flex; align-items: center; gap: 10px; }
-  .row-conf { min-width: 34px; text-align: right; font: 600 var(--fs-small)/1 var(--font-text); }
-  .badge { display: inline-block; min-width: 84px; padding: 8px 10px; border-radius: var(--r-sm); text-align: center;
-           font: 700 12px/1 var(--font-display); letter-spacing: .1em; text-transform: uppercase; }
+           background: var(--amber); color: var(--navy); font: 700 14px/1 var(--font-display);
+           box-shadow: inset 1px 1px 0 rgba(255,255,255,.35), 1px 1px 0 rgba(16,30,60,.15); }
+  .inbox > .cap { padding: 6px 6px 18px; }
+  .rows { display: grid; gap: 18px; padding: 5px; }
+  .chip { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "prop prop" "title side" "text text";
+          column-gap: 12px; align-items: center; width: 100%; margin: 0; padding: 14px 16px 15px; border: 0;
+          border-radius: var(--r-sm); background: var(--panel); text-align: left; cursor: pointer; box-shadow: var(--framed); }
+  .chip:active { box-shadow: var(--deboss), var(--mat); }
+  .chip.is-selected { background: linear-gradient(rgba(217,176,122,.16), rgba(217,176,122,.16)), var(--panel);
+                      box-shadow: var(--bevel), 0 0 0 4px rgba(217,176,122,.62), 0 0 0 5px rgba(199,146,75,.85),
+                                  2px 4px 0 1px rgba(16,30,60,.05), 5px 9px 16px rgba(16,30,60,.15); }
+  .row-prop { grid-area: prop; display: flex; align-items: center; gap: 7px; min-width: 0;
+              font: 600 11px/16px var(--font-text); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+  .row-prop::before { content: ""; flex: none; width: 7px; height: 7px; border-radius: var(--r-round);
+                      box-shadow: inset 0 0 0 1.5px var(--rule); }
+  .chip.is-triaged .row-prop { color: var(--ink); }
+  .chip.is-triaged .row-prop::before { background: var(--amber); box-shadow: none; }
+  .row-prop-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .row-title { grid-area: title; margin-top: 3px; font: 700 19px/24px var(--font-display); }
+  .row-title::first-letter { text-transform: uppercase; }
+  .row-text { grid-area: text; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+              margin-top: 6px; color: var(--muted); font-size: var(--fs-small); line-height: 20px; }
+  .row-side { grid-area: side; display: flex; align-items: center; gap: 10px; }
+  .row-conf { min-width: 40px; text-align: right; font: 700 17px/1 var(--font-display); }
+  .badge { display: inline-block; min-width: 84px; padding: 8px 10px 7px; border-radius: var(--r-sm); text-align: center;
+           font: 700 12px/1 var(--font-display); letter-spacing: .1em; text-transform: uppercase;
+           box-shadow: inset 0 1px 0 rgba(255,255,255,.2), 1px 1px 0 rgba(16,30,60,.14); }
   .t-act { background: var(--navy); color: var(--cream); }
   .t-confirm { background: var(--amber); color: var(--navy); }
   .t-ignore { background: rgba(217,176,122,.55); color: rgba(16,30,60,.78); }
-  .t-none { color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
+  .t-none { padding: 7px 9px 6px; border: 1px dashed var(--rule); color: var(--muted); background: transparent; box-shadow: none; }
 
-  .detail { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
-  #prop { font: 700 18px/24px var(--font-display); }
+  /* the detail tray: pressed into the board; message and draft each in their own well */
+  .detail { container-type: inline-size; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px;
+            padding: 26px 28px 28px; border-radius: var(--r-lg); background-color: var(--tray);
+            background-image: var(--grain); background-size: var(--grain-size); background-position: var(--grain-pos);
+            box-shadow: var(--tray-deep); }
+  #prop { padding: 12px 44px 12px 16px; border-color: rgba(16,30,60,.12); font: 700 21px/26px var(--font-display); }
+  .detail textarea { background: #FBF8F1; }
   .det-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
-  #card { display: none; }
-  #card > * + * { margin-top: 16px; }
-  .decision { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px 28px;
-              padding: 22px 26px; border-radius: var(--r-sm); background: var(--navy); color: var(--cream);
-              box-shadow: var(--pressed); }
-  #card[data-tone="confirm"] .decision { background: var(--amber); color: var(--navy); }
-  #card[data-tone="ignore"] .decision { background: var(--tan); color: var(--navy); }
-  #cat { font-size: 56px; line-height: .95; letter-spacing: -.02em; text-transform: uppercase; }
+  #card { display: none; margin-top: 10px; }
+  #card > * + * { margin-top: 22px; }
+  /* full-width navy decision band: category + confidence */
+  .decision { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 16px 30px;
+              padding: 22px 26px; border-radius: var(--r-sm); color: var(--cream);
+              background-color: var(--navy); background-image: var(--grain-light); background-size: var(--grain-light-size);
+              box-shadow: inset 1px 1px 0 rgba(247,243,235,.12), inset -1px -1px 0 rgba(0,0,0,.3), var(--pressed); }
+  #cat { font-size: 46px; line-height: 1; letter-spacing: -.02em; text-transform: uppercase; }
+  #cat .cat-word { display: inline-block; padding: 12px 20px 9px; border-radius: var(--r-sm);
+                   box-shadow: inset 0 0 0 2px var(--cream); }
   #cat .cat-word::after { content: "."; }
-  #cat .cat-note { display: block; margin-top: 10px; font: 600 var(--fs-small)/20px var(--font-text);
+  #card[data-tone="act"] #cat .cat-word { background: var(--navy); color: var(--cream); }
+  #card[data-tone="confirm"] #cat .cat-word { background: var(--amber); color: var(--navy);
+    box-shadow: inset 1px 1px 0 rgba(255,255,255,.3), inset -1px -1px 0 rgba(16,30,60,.2), 2px 3px 0 rgba(0,0,0,.28); }
+  #card[data-tone="ignore"] #cat .cat-word { background: var(--tan); color: var(--navy);
+    box-shadow: inset 1px 1px 0 rgba(255,255,255,.3), inset -1px -1px 0 rgba(16,30,60,.2), 2px 3px 0 rgba(0,0,0,.28); }
+  #cat .cat-note { display: block; max-width: 30ch; margin-top: 10px; font: 600 var(--fs-small)/20px var(--font-text);
                    letter-spacing: 0; text-transform: none; }
-  .decision-conf { flex: 0 1 220px; padding-left: 28px; border-left: 1px solid currentColor; border-left-color: rgba(127,127,127,.45); }
-  #conf { margin: 0 0 10px; }
-  .conf-cap { display: block; font: 600 var(--fs-caption)/16px var(--font-text); letter-spacing: .14em; text-transform: uppercase; }
-  .conf-num { display: block; margin-top: 4px; font: 700 44px/1 var(--font-display); letter-spacing: -.02em; color: var(--amber); }
-  #card[data-tone="confirm"] .conf-num, #card[data-tone="ignore"] .conf-num { color: var(--navy); }
-  .bar { height: 8px; border-radius: var(--r-sm); background: rgba(247,243,235,.2); overflow: hidden; }
+  .decision-conf { min-width: 0; padding-left: 30px; border-left: 1px solid rgba(247,243,235,.22); }
+  #conf { margin: 0 0 12px; }
+  .conf-cap { display: block; font: 600 var(--fs-caption)/16px var(--font-text); letter-spacing: .14em;
+              text-transform: uppercase; opacity: .85; }
+  .conf-num { display: block; margin-top: 4px; font: 800 46px/1 var(--font-display); letter-spacing: -.02em; color: var(--amber); }
+  .bar { height: 8px; border-radius: var(--r-sm); background: rgba(247,243,235,.16); overflow: hidden;
+         box-shadow: inset 1px 1px 2px rgba(0,0,0,.35); }
   .fill { height: 8px; border-radius: var(--r-sm); background: var(--amber); }
-  #card[data-tone="confirm"] .bar, #card[data-tone="ignore"] .bar { background: rgba(16,30,60,.16); }
-  #card[data-tone="confirm"] .fill, #card[data-tone="ignore"] .fill { background: var(--navy); }
+  /* draft well left, the facts as a quiet spec list right */
+  .result-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(210px, 2fr); gap: 20px 28px; align-items: start; }
+  @container (max-width: 560px) { .result-grid { grid-template-columns: minmax(0, 1fr); } }
   .draftp { margin: 0; }
-  .draftp strong, .specrows strong { display: block; font: 600 var(--fs-caption)/16px var(--font-text);
-                                     letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
-  #draft { display: block; margin-top: 8px; padding: 16px 18px; border-radius: var(--r-sm);
-           background: var(--well); box-shadow: var(--deboss); white-space: pre-wrap; }
-  .specrows p { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 12px; margin: 0;
-                padding: 12px 0; border-top: 1px solid var(--line); }
-  .specrows strong { padding-top: 4px; }
-  #meta { margin: 0; padding: 12px 14px; border-radius: var(--r-sm); background: var(--well); box-shadow: var(--deboss); }
+  .draftp strong, .specrows strong, .meta-k { display: block; font: 600 var(--fs-caption)/16px var(--font-text);
+                                              letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+  #draft { display: block; min-height: 150px; margin-top: 10px; padding: 20px 22px; border-radius: var(--r-sm);
+           background: var(--sunk); box-shadow: var(--well-sunk); white-space: pre-wrap; }
+  .facts { min-width: 0; }
+  .specrows p, .meta-row { display: grid; gap: 4px; margin: 0; padding: 12px 0; border-top: 1px solid var(--rule); }
+  .specrows p:first-child { padding-top: 0; border-top: 0; }
+  .specrows span, .meta-v { font-size: 15px; line-height: 22px; color: var(--ink); overflow-wrap: anywhere; }
+  #meta { margin: 0; }
+  #meta:not(:empty) { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--rule); }
+  #meta:has(.meta-row) { margin-top: 0; padding-top: 0; border-top: 0; }
+  .meta-sep { display: none; }
 
-  /* ---- plays: numbered strip + play panels ------------------------ */
-  .plays { display: grid; gap: 20px; }
-  .sec-head { padding: 10px 6px 0; }
-  .sec-head h2 { font-size: var(--fs-h2); }
-  .strip { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 14px; margin: 0; padding: 0; list-style: none; }
-  .strip a { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "num icon" "title title" "text text";
-             align-content: start; gap: 10px; height: 100%; padding: 18px 16px 20px; border-radius: var(--r-sm);
-             background: var(--panel); color: inherit; text-decoration: none; box-shadow: var(--pressed); }
-  .strip .num { grid-area: num; font: 700 40px/.9 var(--font-display); letter-spacing: -.03em; }
-  .strip svg { grid-area: icon; width: 24px; height: 24px; }
-  .strip-title { grid-area: title; font: 700 15px/18px var(--font-display); letter-spacing: .02em; text-transform: uppercase; }
-  .strip-title::after { content: "."; }
-  .strip-text { grid-area: text; color: var(--muted); font-size: var(--fs-small); line-height: 20px; }
-  .staged { margin: 0; padding: 16px 20px; border-radius: var(--r-sm); background: var(--well);
-            box-shadow: inset 4px 0 0 var(--amber), var(--deboss); }
-  .play-head { display: flex; align-items: baseline; gap: 16px; margin-bottom: 18px; padding-bottom: 14px;
-               border-bottom: 1px solid var(--line); }
-  .play-head .num { font: 700 36px/1 var(--font-display); letter-spacing: -.03em; }
-  .play-head h3 { font-size: var(--fs-h3); line-height: 1.2; }
+  /* ---- plays: ruled spec table + play panels ---------------------- */
+  .spec-sheet { padding: 6px 26px 4px; }
+  .spec { width: 100%; border-collapse: collapse; }
+  .spec thead th { padding: 16px 14px 10px; border-bottom: 2px solid var(--navy); text-align: left;
+                   font: 600 11px/16px var(--font-text); letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+  .spec tbody tr { position: relative; }
+  .spec td, .spec tbody th { padding: 17px 14px 16px; border-bottom: 1px solid var(--rule); text-align: left;
+                             vertical-align: baseline; font-weight: inherit; }
+  .spec tbody tr:last-child > * { border-bottom: 0; }
+  .spec-n { width: 72px; }
+  .spec-n svg { display: block; width: 26px; height: 26px; fill: var(--amber); }
+  .spec-name { width: 1%; white-space: nowrap; font: 700 17px/22px var(--font-display); letter-spacing: .02em; text-transform: uppercase; }
+  .spec-name a { color: inherit; text-decoration: none; }
+  .spec-name a::after { content: ""; position: absolute; inset: 0; }
+  .spec-name .pn::after { content: "."; }
+  .spec-desc { color: var(--muted); font-size: 15px; line-height: 22px; }
+  .spec-gate { width: 1%; white-space: nowrap; text-align: right !important; }
+  .gate-word { display: inline-block; padding: 7px 10px 6px; border-radius: var(--r-sm);
+               font: 700 11px/1 var(--font-display); letter-spacing: .1em; text-transform: uppercase; }
+  .gw-held { background: var(--amber); color: var(--navy); box-shadow: inset 0 1px 0 rgba(255,255,255,.25), 1px 1px 0 rgba(16,30,60,.14); }
+  .gw-approve { color: var(--navy); box-shadow: inset 0 0 0 1.5px var(--navy); }
+  .spec tbody tr:focus-within { background: rgba(217,176,122,.14); }
+  .staged { margin: 0; padding: 18px 22px; border-radius: var(--r-sm); background: var(--well);
+            box-shadow: inset 4px 0 0 var(--amber), var(--well-sunk); }
+  .play { padding: 26px 28px 28px; }
+  .play-head { display: flex; align-items: baseline; gap: 16px; margin-bottom: 20px; padding-bottom: 14px;
+               border-bottom: 1px solid var(--rule); }
+  .play-head .num { display: inline-block; }
+  .play-head .num svg { display: block; width: 30px; height: 30px; fill: var(--amber); }
+  .play-head h3 { font-size: 22px; line-height: 1.2; }
   .play-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 28px; align-items: start; }
   .play-ctl, .play-out { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-content: start; min-width: 0; }
   .play-ctl > p { margin: 0; }
   .fields { display: flex; flex-wrap: wrap; gap: 12px; }
+  .fields > label:first-child { flex: 1 1 100%; }
   .scenarios { display: grid; gap: 10px; }
   .scenarios .bigbtn { width: 100%; }
   .play-out > p { margin: 0; }
   .play-out .bigbtn { margin: 0 10px 10px 0; }
 
   /* ---- run timelines (rendered by renderRun) ---------------------- */
-  .timeline { min-height: 60px; padding: 14px; border-radius: var(--r-sm); background: var(--well);
-              box-shadow: var(--deboss); font-size: var(--fs-small); line-height: 21px; overflow-wrap: break-word; }
+  .timeline { min-height: 64px; padding: 16px; border-radius: var(--r-sm); background: var(--well);
+              box-shadow: var(--well-sunk); font-size: var(--fs-small); line-height: 21px; overflow-wrap: break-word; }
   .timeline:empty::before { content: "No run yet."; display: block; padding: 4px 2px; color: var(--muted); }
   .timeline > p { margin: 0 0 10px; }
   .runhead { padding: 12px 14px; border-radius: var(--r-sm); background: var(--panel);
-             box-shadow: inset 4px 0 0 var(--navy), var(--pressed-row); }
+             box-shadow: inset 4px 0 0 var(--navy), var(--bevel), var(--pressed-row); }
   .step { margin: 10px 0 0; padding: 12px 14px 12px 18px; border-radius: var(--r-sm); background: var(--panel);
-          box-shadow: inset 4px 0 0 var(--line), var(--pressed-row); }
-  .step.s-done { box-shadow: inset 4px 0 0 var(--green), var(--pressed-row); }
-  .step.s-held { box-shadow: inset 4px 0 0 var(--amber), var(--pressed-row); }
-  .step.s-waiting { box-shadow: inset 4px 0 0 var(--navy), var(--pressed-row); }
-  .step.s-failed { box-shadow: inset 4px 0 0 var(--danger), var(--pressed-row); }
+          box-shadow: inset 4px 0 0 var(--line), var(--bevel), var(--pressed-row); }
+  .step.s-done { box-shadow: inset 4px 0 0 var(--green), var(--bevel), var(--pressed-row); }
+  .step.s-held { box-shadow: inset 4px 0 0 var(--amber), var(--bevel), var(--pressed-row); }
+  .step.s-waiting { box-shadow: inset 4px 0 0 var(--navy), var(--bevel), var(--pressed-row); }
+  .step.s-failed { box-shadow: inset 4px 0 0 var(--danger), var(--bevel), var(--pressed-row); }
   .step.s-skipped, .step.s-pending { color: var(--muted); background: transparent;
                                      box-shadow: inset 4px 0 0 var(--line), inset 0 0 0 1px var(--line); }
   .step > div { margin-top: 6px; }
@@ -243,16 +318,16 @@
   /* ---- cameras: scenario cards + timeline ------------------------- */
   .cam-desc { margin: 0 0 22px; columns: 2 340px; column-gap: 40px; }
   .cam-grid { display: grid; grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); gap: 24px; align-items: start; }
-  .cam-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .cam-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
   #cameras .cam-cards .bigbtn { display: grid; align-content: start; gap: 6px; width: 100%; min-height: 92px;
-                                padding: 14px 16px; box-shadow: var(--pressed); }
+                                padding: 14px 16px; box-shadow: var(--bevel), var(--pressed); }
   #cameras .cam-cards .bigbtn.is-on { box-shadow: inset 4px 0 0 var(--amber), var(--deboss); }
   .cam-k { font: 700 var(--fs-caption)/16px var(--font-display); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
   .cam-sep { display: none; }
   .cam-d { font: 500 15px/20px var(--font-text); }
   .cam-out { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: auto; }
 
-  .foot { padding: 18px 6px 8px; border-top: 1px solid var(--line); }
+  .foot { padding: 18px 6px 8px; border-top: 1px solid var(--rule); }
   .foot .fine { max-width: 92ch; margin: 0; }
 
   /* hover only where a pointer can hover, so taps on touch screens don't leave rows tinted */
@@ -260,58 +335,71 @@
     .bigbtn:hover, #go:hover { border-color: var(--tan); }
     .railnav a:hover { opacity: 1; background: rgba(247,243,235,.06); }
     .chip:not(.is-selected):hover { background: linear-gradient(rgba(217,176,122,.10), rgba(217,176,122,.10)), var(--panel); }
-    .strip a:hover { background: linear-gradient(rgba(217,176,122,.10), rgba(217,176,122,.10)), var(--panel); }
+    .spec tbody tr:hover { background: rgba(217,176,122,.12); }
   }
   /* ---- responsive ------------------------------------------------- */
   @media (max-width: 1279px) {
-    .strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     .play-grid, .cam-grid { grid-template-columns: minmax(0, 1fr); }
     .cam-out { position: static; max-height: none; overflow: visible; }
   }
   @media (max-width: 1179px) { .console { grid-template-columns: minmax(0, 1fr); } }
   @media (max-width: 1023px) {
     /* the rail opens up: its blocks join the page column in spec order */
-    .shell { display: flex; flex-direction: column; gap: 20px; }
+    .shell { display: flex; flex-direction: column; align-items: stretch; gap: 22px; }
     .rail, .main { display: contents; }
     .rail-top { order: 1; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
-                gap: 12px 16px; padding: 16px 18px; border-radius: var(--r-lg); background: var(--navy);
-                color: var(--cream); box-shadow: var(--pressed); }
+                gap: 12px 16px; padding: 16px 18px; border-radius: var(--r-lg); color: var(--cream);
+                background-color: var(--navy); background-image: var(--grain-light); background-size: var(--grain-light-size);
+                box-shadow: inset 1px 1px 0 rgba(247,243,235,.10), var(--pressed); }
     .rail-top :focus-visible { outline-color: var(--cream); }
     .wordmark { padding: 0; }
     .railnav { display: flex; gap: 2px; }
-    .railnav a { padding: 9px 10px; font-size: 12px; }
-    .railnav svg { display: none; }
-    .masthead { order: 2; grid-template-columns: minmax(0, 1fr); }
+    .railnav a { padding: 10px 10px 8px; font-size: 15px; }
+    .railnav .nav-s { display: none; }
+    .p1 { order: 2; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: baseline; gap: 4px 14px;
+          margin: 0; padding: 14px 18px; border: 0; border-radius: var(--r-sm); background: var(--panel);
+          color: var(--ink); box-shadow: inset 4px 0 0 var(--amber), var(--bevel), var(--pressed-row); }
+    .p1 .cap { grid-column: 1 / -1; color: var(--muted); }
+    .p1-rung { margin: 0; font-size: 20px; color: var(--navy); }
+    .p1 p { margin: 0; opacity: 1; }
+    .p1 .p1-tag { grid-column: 1 / -1; color: var(--muted); }
+    .masthead { order: 3; grid-template-columns: minmax(0, 1fr); padding-top: 0; }
     /* the top bar already carries the wordmark at this width; keep the h1 for semantics only */
     .masthead-mark { position: absolute; width: 1px; height: 1px; overflow: hidden;
                      clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
-    .p1 { order: 3; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: baseline; gap: 4px 14px;
-          margin: 0; padding: 14px 18px; border: 0; border-radius: var(--r-sm); background: var(--panel);
-          color: var(--ink); box-shadow: inset 4px 0 0 var(--amber), var(--pressed-row); }
-    .p1 .cap { grid-column: 1 / -1; color: var(--muted); }
-    .p1-rung { margin: 0; font-size: 18px; }
-    .p1 p { margin: 0; opacity: 1; }
-    .p1 .p1-tag { grid-column: 1 / -1; color: var(--muted); }
     #triage { order: 4; } #plays { order: 5; } #cameras { order: 6; } .foot { order: 7; }
   }
   @media (max-width: 719px) {
-    .shell { padding: 12px; gap: 16px; }
-    .masthead { grid-template-columns: minmax(0, 1fr); gap: 12px; padding-top: 6px; }
+    .shell { padding: 12px; gap: 18px; }
+    .masthead { gap: 12px; padding-bottom: 18px; }
     .panel { padding: 18px 14px; }
-    .inbox { padding: 18px 12px 12px; }
+    .inbox { padding: 18px 12px 16px; }
+    .detail { padding: 20px 16px 20px; }
     .p1 { grid-template-columns: minmax(0, 1fr); }
-    .strip { grid-template-columns: minmax(0, 1fr); gap: 10px; }
-    .strip a { grid-template-columns: 52px minmax(0, 1fr) 24px; grid-template-areas: "num title icon" "num text icon";
-               gap: 4px 12px; padding: 14px 16px; }
-    .strip .num { font-size: 32px; }
-    .decision { gap: 12px 20px; padding: 18px 20px; }
-    #cat { font-size: 44px; }
-    .decision-conf { flex: 1 1 120px; padding-left: 18px; }
-    .conf-num { font-size: 34px; }
-    .specrows p { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+    .sec-head { padding: 0 2px; }
+    .decision { grid-template-columns: minmax(0, 1fr); gap: 16px; padding: 18px 20px; }
+    #cat { font-size: 38px; }
+    .decision-conf { padding: 14px 0 0; border-left: 0; border-top: 1px solid rgba(247,243,235,.22); }
+    .conf-num { font-size: 38px; }
+    #draft { min-height: 0; padding: 16px 18px; }
+    /* spec table → stacked spec rows */
+    .spec-sheet { padding: 4px 16px; }
+    .spec, .spec tbody { display: block; }
+    .spec thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); }
+    .spec tbody tr { display: grid; grid-template-columns: 46px minmax(0, 1fr); grid-template-areas: "n name" "n desc" "n gate";
+                     gap: 4px 12px; padding: 16px 0; border-bottom: 1px solid var(--rule); }
+    .spec tbody tr:last-child { border-bottom: 0; }
+    .spec td, .spec tbody th { display: block; width: auto; padding: 0; border: 0; }
+    .spec-n { grid-area: n; }
+    .spec-n svg { width: 22px; height: 22px; }
+    .spec-name { grid-area: name; white-space: normal; }
+    .spec-desc { grid-area: desc; }
+    .spec-gate { grid-area: gate; margin-top: 6px; text-align: left !important; }
     .cam-cards { grid-template-columns: minmax(0, 1fr); }
     .bigbtn, #go { width: 100%; justify-content: center; text-align: center; }
     .scenarios .bigbtn, #cameras .cam-cards .bigbtn { justify-content: start; text-align: left; }
+    .play { padding: 18px 14px; }
+    .play-head .num svg { width: 24px; height: 24px; }
     .play-out .bigbtn { margin: 0 0 10px; }
   }
   @media (prefers-reduced-motion: reduce) {
@@ -326,9 +414,9 @@
       <div class="wordmark" role="img" aria-label="ComfiAutopilot"><span class="wm" aria-hidden="true">Comf<span class="wm-i">ı<span class="tittle"></span></span>Autop<span class="wm-i">ı<span class="tittle"></span></span>lot<span class="dot"></span></span></div>
       <nav aria-label="Page sections">
         <ul class="railnav">
-          <li><a href="#triage" aria-current="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 13.5 6 5h12l2.5 8.5V19h-17z"/><path d="M3.5 13.5H9l1 2h4l1-2h5.5"/></svg>Triage</a></li>
-          <li><a href="#plays"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M10 8.5v7l5.5-3.5z"/></svg>Plays</a></li>
-          <li><a href="#cameras"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 8h4L9 5.5h6L16.5 8h4v11h-17z"/><circle cx="12" cy="13.5" r="3.5"/></svg>Cameras</a></li>
+          <li><a href="#triage" aria-current="true"><span class="nav-s" aria-hidden="true"><svg viewBox="0 0 10 10"><path d="M5 0 10 5 5 10 0 5Z"/></svg></span>Triage</a></li>
+          <li><a href="#plays"><span class="nav-s" aria-hidden="true"><svg viewBox="0 0 10 10"><path d="M2 0 10 5 2 10Z"/></svg></span>Plays</a></li>
+          <li><a href="#cameras"><span class="nav-s" aria-hidden="true"><svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="5"/></svg></span>Cameras</a></li>
         </ul>
       </nav>
     </div>
@@ -354,9 +442,11 @@
          and the Oct 7–14 pilot are pre-existing.</p>
     </header>
 
-    <section id="triage" class="console" aria-label="Triage">
+    <section id="triage" class="triage" aria-labelledby="h-triage">
+      <div class="sec-head"><h2 class="display sec-title" id="h-triage"><span class="sec-s" aria-hidden="true"><svg viewBox="0 0 10 10"><path d="M5 0 10 5 5 10 0 5Z"/></svg></span>Triage</h2></div>
+      <div class="console">
       <div class="panel inbox">
-        <div class="inbox-head"><h2 class="display">Inbox</h2><span class="count">4</span></div>
+        <div class="inbox-head"><h3 class="display">Inbox</h3><span class="count">4</span></div>
         <span class="cap">Staged examples</span>
         <div class="rows">
           <button class="chip" data-msg="Hi, we just got back and the door code is not working. We are standing outside with our bags.">Try: lockout</button>
@@ -365,7 +455,7 @@
           <button class="chip" data-msg="The guests upstairs have played loud music past midnight two nights in a row and we can barely sleep.">Try: noise complaint</button>
         </div>
       </div>
-      <div class="panel detail">
+      <div class="detail">
         <label>Property
           <select id="prop">
             <option>Cedar Hollow Garden Unit 1A</option><option>Cedar Hollow Garden Unit 1B</option>
@@ -384,26 +474,38 @@
               <div class="bar"><div class="fill" id="confbar"></div></div>
             </div>
           </div>
-          <p class="draftp"><strong>Draft:</strong> <span id="draft"></span></p>
-          <div class="specrows">
-            <p><strong>Route:</strong> <span id="route"></span></p>
-            <p><strong>Why:</strong> <span id="reason"></span></p>
+          <div class="result-grid">
+            <p class="draftp"><strong>Draft:</strong> <span id="draft"></span></p>
+            <div class="facts">
+              <div class="specrows">
+                <p><strong>Route:</strong> <span id="route"></span></p>
+                <p><strong>Why:</strong> <span id="reason"></span></p>
+              </div>
+              <p class="fine" id="meta"></p>
+            </div>
           </div>
-          <p class="fine" id="meta"></p>
         </div>
+      </div>
       </div>
     </section>
 
     <section id="plays" class="plays" aria-labelledby="h-plays">
-      <div class="sec-head"><h2 class="display" id="h-plays">Plays: the operation at work</h2></div>
-      <ol class="strip">
-        <li><a href="#triage"><span class="num">01</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H10l-4.5 3.5V16H4z"/></svg><span class="strip-title">Guest messages</span><span class="strip-text">Start with the first step of the operation: paste a guest message.</span></a></li>
-        <li><a href="#play-early"><span class="num">02</span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg><span class="strip-title">Early check-in</span><span class="strip-text">A guest asks to arrive early.</span></a></li>
-        <li><a href="#play-cleaner"><span class="num">03</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11 12 4.5 20 11v9H4z"/><path d="M10 20v-5.5h4V20"/></svg><span class="strip-title">Cleaner done</span><span class="strip-text">No guest message at all: the cleaner finishing is the trigger.</span></a></li>
-        <li><a href="#play-instay"><span class="num">04</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3.8a4.7 4.7 0 0 0-4.4 6.3l-6.8 6.8 3.3 3.3 6.8-6.8a4.7 4.7 0 0 0 6.3-4.4l-2.9 2.9-2.9-.4-.4-2.9z"/></svg><span class="strip-title">In-stay issue</span><span class="strip-text">A guest who is already in the home reports something broken.</span></a></li>
-        <li><a href="#play-late"><span class="num">05</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 4H6v16h7"/><path d="M10.5 12H20m-3-3.2 3 3.2-3 3.2"/></svg><span class="strip-title">Late checkout</span><span class="strip-text">A departing guest asks to check out late.</span></a></li>
-        <li><a href="#cameras"><span class="num">06</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 8h4L9 5.5h6L16.5 8h4v11h-17z"/><circle cx="12" cy="13.5" r="3.5"/></svg><span class="strip-title">Cameras</span><span class="strip-text">An outside camera reports motion — no message from anyone.</span></a></li>
-      </ol>
+      <div class="sec-head"><h2 class="display sec-title" id="h-plays"><span class="sec-s" aria-hidden="true"><svg viewBox="0 0 10 10"><path d="M2 0 10 5 2 10Z"/></svg></span>Plays</h2><p class="sec-deck">The operation at work</p></div>
+      <!-- Gate column: the real P1 wording only. Triage returns a send right of approve_first;
+           every play's action steps come back held (sandbox ledger empty, see sandbox/README.md). -->
+      <div class="panel spec-sheet">
+        <table class="spec" aria-label="Plays: the operation at work">
+          <thead><tr><th scope="col" aria-label="Play mark"></th><th scope="col">Play</th><th scope="col">Description</th><th scope="col" class="spec-gate">Gate</th></tr></thead>
+          <tbody>
+            <tr><td class="spec-n"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M5 0 10 5 5 10 0 5Z"/></svg></td><th scope="row" class="spec-name"><a href="#triage"><span class="pn">Guest messages</span></a></th><td class="spec-desc">Start with the first step of the operation: paste a guest message.</td><td class="spec-gate"><span class="gate-word gw-approve">Approve-first</span></td></tr>
+            <tr><td class="spec-n"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M5 0 10 10 0 10Z"/></svg></td><th scope="row" class="spec-name"><a href="#play-early"><span class="pn">Early check-in</span></a></th><td class="spec-desc">A guest asks to arrive early.</td><td class="spec-gate"><span class="gate-word gw-held">Held for approval</span></td></tr>
+            <tr><td class="spec-n"><svg viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="5"/></svg></td><th scope="row" class="spec-name"><a href="#play-cleaner"><span class="pn">Cleaner done</span></a></th><td class="spec-desc">No guest message at all: the cleaner finishing is the trigger.</td><td class="spec-gate"><span class="gate-word gw-held">Held for approval</span></td></tr>
+            <tr><td class="spec-n"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M0 0H10V10H0Z"/></svg></td><th scope="row" class="spec-name"><a href="#play-instay"><span class="pn">In-stay issue</span></a></th><td class="spec-desc">A guest who is already in the home reports something broken.</td><td class="spec-gate"><span class="gate-word gw-held">Held for approval</span></td></tr>
+            <tr><td class="spec-n"><svg viewBox="0 0 10 10" aria-hidden="true"><path d="M0 0 10 0 5 10Z"/></svg></td><th scope="row" class="spec-name"><a href="#play-late"><span class="pn">Late checkout</span></a></th><td class="spec-desc">A departing guest asks to check out late.</td><td class="spec-gate"><span class="gate-word gw-held">Held for approval</span></td></tr>
+            <tr><td class="spec-n"><svg viewBox="0 0 10 10" aria-hidden="true"><polygon points="5,0 10,2.5 10,7.5 5,10 0,7.5 0,2.5"/></svg></td><th scope="row" class="spec-name"><a href="#cameras"><span class="pn">Cameras</span></a></th><td class="spec-desc">An outside camera reports motion — no message from anyone.</td><td class="spec-gate"><span class="gate-word gw-held">Held for approval</span></td></tr>
+          </tbody>
+        </table>
+      </div>
       <p class="staged"><strong>Staged demo world.</strong> The properties, turnovers,
          cleaners, and arrivals below are fixture data — no real guest data anywhere.
          Every send in a play is <strong>simulated or held for approval</strong>:
@@ -411,7 +513,7 @@
          gate the autonomy ladder applies before anything may execute.</p>
 
       <article class="play panel" id="play-early" aria-labelledby="h-early">
-        <div class="play-head"><span class="num" aria-hidden="true">02</span><h3 id="h-early">Play: early check-in</h3></div>
+        <div class="play-head"><span class="num" aria-hidden="true"><svg viewBox="0 0 10 10"><path d="M5 0 10 10 0 10Z"/></svg></span><h3 id="h-early">Play: early check-in</h3></div>
         <div class="play-grid">
           <div class="play-ctl">
             <p>A guest asks to arrive early. Comfi Autopilot extracts the requested time, checks the
@@ -447,7 +549,7 @@
       </article>
 
       <article class="play panel" id="play-cleaner" aria-labelledby="h-cleaner">
-        <div class="play-head"><span class="num" aria-hidden="true">03</span><h3 id="h-cleaner">Play: cleaner done → guest ready</h3></div>
+        <div class="play-head"><span class="num" aria-hidden="true"><svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="5"/></svg></span><h3 id="h-cleaner">Play: cleaner done → guest ready</h3></div>
         <div class="play-grid">
           <div class="play-ctl">
             <p>No guest message at all: the cleaner finishing is the trigger. Comfi Autopilot verifies
@@ -467,7 +569,7 @@
       </article>
 
       <article class="play panel" id="play-instay" aria-labelledby="h-instay">
-        <div class="play-head"><span class="num" aria-hidden="true">04</span><h3 id="h-instay">Play: in-stay issue → handyman dispatch</h3></div>
+        <div class="play-head"><span class="num" aria-hidden="true"><svg viewBox="0 0 10 10"><path d="M0 0H10V10H0Z"/></svg></span><h3 id="h-instay">Play: in-stay issue → handyman dispatch</h3></div>
         <div class="play-grid">
           <div class="play-ctl">
             <p>A guest who is already in the home reports something broken. Comfi Autopilot identifies
@@ -521,7 +623,9 @@
       </article>
     </section>
 
-    <section id="cameras" class="play panel" aria-labelledby="h-cam">
+    <section id="cameras" class="cams" aria-labelledby="h-cameras">
+      <div class="sec-head"><h2 class="display sec-title" id="h-cameras"><span class="sec-s" aria-hidden="true"><svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="5"/></svg></span>Cameras</h2></div>
+      <article class="play panel" aria-labelledby="h-cam">
       <div class="play-head"><span class="num" aria-hidden="true">06</span><h3 id="h-cam">Play: camera check</h3></div>
       <div class="cam-desc">
       <p>An outside camera reports motion — no message from anyone. Comfi Autopilot classifies
@@ -588,6 +692,7 @@
           <div class="timeline" id="cc-timeline"></div>
         </div>
       </div>
+      </article>
     </section>
 
     <footer class="foot">
@@ -952,17 +1057,19 @@
       const TONES = { Act: 'act', Confirm: 'confirm', Ignore: 'ignore' };
       const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-      // Inbox rows: each staged example shows its title, the message, and a
-      // badge slot that only fills from a real /triage result.
+      // Inbox rows: each staged example shows a property line, its subject,
+      // the message, and a badge + confidence slot. The property, badge and
+      // confidence only fill from a real /triage result; until then the
+      // row says it has not been triaged.
       const rows = [...document.querySelectorAll('.chip')];
       rows.forEach(b => {
-        const title = b.textContent.trim();
-        const main = span('row-main'), side = span('row-side');
-        main.append(span('row-title', title), span('row-text', b.dataset.msg));
+        const subject = b.textContent.trim().replace(/^Try:\s*/, '');
+        const prop = span('row-prop'), side = span('row-side');
+        prop.append(span('row-prop-t', 'Not triaged yet'));
         const empty = span('badge t-none', '—'); empty.title = 'Not triaged yet';
         side.append(empty, span('row-conf', ''));
         b.textContent = '';
-        b.append(main, side);
+        b.append(prop, span('row-title', subject), span('row-text', b.dataset.msg), side);
       });
       const msg = $('msg');
       const markSelected = () => rows.forEach(b => {
@@ -974,13 +1081,16 @@
       msg.addEventListener('input', markSelected);
       markSelected();
 
-      // When a triage result lands (#meta is written last), tone the decision
-      // panel, split the confidence for display, and post the result on the
-      // row that was triaged. Visible text stays exactly what the handler wrote.
-      let triaged = '';
-      $('go').addEventListener('click', () => { triaged = msg.value; });
-      new MutationObserver(() => {
-        const cat = $('cat'), conf = $('conf'), text = cat.textContent;
+      // When a triage result lands (#meta is written last), tone the category
+      // block, split the confidence and the meta line for display, and post
+      // the result (badge, confidence, property it was triaged at) on the row
+      // that was triaged. Every word stays exactly what the handler wrote:
+      // the spans only re-lay it out, and the " · " separators stay in the
+      // text (hidden) so #meta's textContent is unchanged.
+      let triaged = '', triagedProp = '';
+      $('go').addEventListener('click', () => { triaged = msg.value; triagedProp = $('prop').value; });
+      const resultObserver = new MutationObserver(() => {
+        const cat = $('cat'), conf = $('conf'), meta = $('meta'), text = cat.textContent;
         const word = text.split(' ')[0], tone = TONES[word] || '';
         $('card').dataset.tone = tone;
         cat.textContent = '';
@@ -988,13 +1098,25 @@
         if (text.length > word.length) cat.append(span('cat-note', text.slice(word.length)));
         const m = conf.textContent.match(/^(Confidence )(.*)$/);
         if (m) { conf.textContent = ''; conf.append(span('conf-cap', m[1]), span('conf-num', m[2])); }
+        const mm = meta.textContent.match(/^(Tier path: )(.*?)( · )(Cost: )(.*?)( · )(Send right today: )(.*)$/);
+        if (mm) {
+          const fact = (k, v) => { const r = span('meta-row'); r.append(span('meta-k', k), span('meta-v', v)); return r; };
+          meta.textContent = '';
+          meta.append(fact(mm[1], mm[2]), span('meta-sep', mm[3]), fact(mm[4], mm[5]),
+                      span('meta-sep', mm[6]), fact(mm[7], mm[8]));
+        }
         const row = rows.find(b => b.dataset.msg === triaged);
         if (row && tone) {
           const badge = row.querySelector('.badge');
           badge.className = 'badge t-' + tone; badge.textContent = word; badge.title = '';
           row.querySelector('.row-conf').textContent = m ? m[2] : '';
+          row.querySelector('.row-prop-t').textContent = triagedProp;
+          row.querySelector('.row-prop').title = triagedProp;
+          row.classList.add('is-triaged');
         }
-      }).observe($('meta'), { childList: true });
+        resultObserver.takeRecords();   // our own re-layout of #meta is not a new result
+      });
+      resultObserver.observe($('meta'), { childList: true });
 
       // Camera scenario cards: the label before the dash becomes the kicker.
       document.querySelectorAll('#cameras .bigbtn').forEach(b => {
