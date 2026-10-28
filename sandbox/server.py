@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from jev.autonomy import load_ledger, right_for  # noqa: E402
 from jev.plays import FixtureContext, PlayEngine, default_fixture_data  # noqa: E402
 from jev.plays import get as get_play  # noqa: E402
+from jev.plays.camera_check import handle_camera_event  # noqa: E402
 from jev.plays.cleaner_done import handle_cleaner_done_event  # noqa: E402
 from jev.tiers import decide as _decide  # noqa: E402
 from jev.types import FAIL_SAFE  # noqa: E402
@@ -55,6 +56,16 @@ def handle_play(payload: dict, engine=ENGINE, runs=None) -> dict:
     (the cleaner's finish is the trigger). Returns the run's dict."""
     runs = RUNS if runs is None else runs
     play_name = str(payload.get("play", "")).strip()
+    if play_name == "camera_check":
+        event = {k: str(payload.get(k, "")).strip()
+                 for k in ("property_id", "date", "camera", "ts",
+                           "frame_id")}
+        try:
+            run = handle_camera_event(engine, event)
+        except ValueError as exc:
+            return {"error": str(exc)}
+        runs[run.run_id] = run
+        return run.to_dict()
     if play_name == "cleaner_done":
         event = {k: str(payload.get(k, "")).strip()
                  for k in ("property_id", "date", "cleaner_id",

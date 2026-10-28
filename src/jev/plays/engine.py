@@ -19,6 +19,7 @@ today, and play action keys live there the same way. Stakes:
   message_guest    middle   sending to a guest
   message_cleaner  middle   sending to a cleaner
   dispatch_vendor  middle   dispatching a handyman/vendor
+  notify_operator  middle   flagging the operator (never a guest)
   charge_guest     highest  moving a guest's money
 
 At P1 (approve_first, the default) an action step is HELD: its artifact
@@ -44,6 +45,10 @@ STAKES = {
     "message_guest": "middle",
     "message_cleaner": "middle",
     "dispatch_vendor": "middle",
+    # Added for Play 7 (camera check): the notification goes to the
+    # operator, never to a guest — words to a real person, so middle,
+    # the same as messaging a cleaner or dispatching a vendor.
+    "notify_operator": "middle",
     "charge_guest": "highest",
 }
 

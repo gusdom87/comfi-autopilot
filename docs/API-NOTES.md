@@ -16,3 +16,9 @@ three independent write-ups of the same docs. TO VERIFY on the first live call.
   $150 credits posting AND the card decision.
 - Contributor-mode IDs (muse-spark-1.3-contributor) belong to Muse Code
   subscriptions; the eval uses Standard IDs only.
+
+## Image input (verified live 2026-10-27)
+Responses endpoint accepts image input as Responses-native content parts:
+{"type": "input_text", "text": ...} and {"type": "input_image", "image_url": "data:<media>;base64,..."} (image_url is a plain string).
+The chat-completions shape ({"type": "image_url", "image_url": {"url": ...}}) returns HTTP 400 "input[1].content did not match any supported type".
+Verified: muse-spark-1.3 classified a test image and the strict parser accepted the result (~$0.007/call at test size).

@@ -73,6 +73,20 @@ class Arrival:
     date: str                              # ISO date, the arrival day
     guest_name: str = "there"              # first name, for the greeting
     checkin_time: str = ""                 # "" -> property standard
+    guest_count: int = 2                   # booked party size
+
+
+@dataclass
+class Stay:
+    """A stay in progress covering a date: the guest arrived earlier
+    and has not left yet (calendar-style). One record per covered
+    mid-stay date, the way the fixtures key everything else."""
+    property_id: str
+    date: str                              # a mid-stay date it covers
+    guest_name: str = "there"
+    guest_count: int = 2                   # booked party size
+    arrival_date: str = ""
+    departure_date: str = ""
 
 
 @dataclass
@@ -109,6 +123,11 @@ class RealityContext(Protocol):
         """The guest arriving at the property on `date`, if there is one."""
         ...
 
+    def get_stay(self, property_id: str, date: str) -> Stay | None:
+        """The stay in progress covering `date` (guest arrived earlier,
+        still in residence), if there is one."""
+        ...
+
     def get_clean_report(self, property_id: str, date: str) -> CleanReport | None:
         """The cleaner's completion record for the property on `date`.
         None means: no clean is on record (a play must fail safe)."""
@@ -122,6 +141,7 @@ class FixtureContext:
       "properties": {property_id: {PropertyInfo fields}},
       "turnovers": {"<property_id>|<date>": {Turnover fields}},
       "arrivals": {"<property_id>|<date>": {Arrival fields}},
+      "stays": {"<property_id>|<date>": {Stay fields}},
       "clean_reports": {"<property_id>|<date>": {CleanReport fields}},
     }
     """
@@ -137,6 +157,10 @@ class FixtureContext:
         for key, kw in data.get("arrivals", {}).items():
             pid, date = key.split("|", 1)
             self._arrivals[key] = Arrival(property_id=pid, date=date, **kw)
+        self._stays = {}
+        for key, kw in data.get("stays", {}).items():
+            pid, date = key.split("|", 1)
+            self._stays[key] = Stay(property_id=pid, date=date, **kw)
         self._reports = {}
         for key, kw in data.get("clean_reports", {}).items():
             pid, date = key.split("|", 1)
@@ -150,6 +174,9 @@ class FixtureContext:
 
     def get_arrival(self, property_id: str, date: str) -> Arrival | None:
         return self._arrivals.get(f"{property_id}|{date}")
+
+    def get_stay(self, property_id: str, date: str) -> Stay | None:
+        return self._stays.get(f"{property_id}|{date}")
 
     def get_clean_report(self, property_id: str, date: str) -> CleanReport | None:
         return self._reports.get(f"{property_id}|{date}")
@@ -191,6 +218,9 @@ class LiveTurnoReadAdapter:
     def get_arrival(self, property_id: str, date: str):
         self._stub()
 
+    def get_stay(self, property_id: str, date: str):
+        self._stub()
+
     def get_clean_report(self, property_id: str, date: str):
         self._stub()
 
@@ -204,6 +234,10 @@ def default_fixture_data() -> dict:
     The same day also carries the cleaner-done fixtures Play 3 runs on:
       cedar-hollow-2n  clean complete, nothing flagged -> guest-ready sends
       peters-house clean complete, problem flagged -> human hold
+    And one stay in progress for Play 7 (camera check): Alex's party
+    of four is mid-stay at cedar-hollow-1n on 2026-10-29, which is what
+    the staged large-gathering frame (vision.STAGED_FRAMES f3) is
+    checked against. The frames themselves live in plays/vision.py.
     Check-in notes are staged instruction lines, never real codes.
     """
     return {
@@ -246,6 +280,12 @@ def default_fixture_data() -> dict:
         "arrivals": {
             "cedar-hollow-2n|2026-10-28": {"guest_name": "Dana"},
             "peters-house|2026-10-28": {"guest_name": "Marcus"},
+        },
+        "stays": {
+            "cedar-hollow-1n|2026-10-29": {
+                "guest_name": "Alex", "guest_count": 4,
+                "arrival_date": "2026-10-27",
+                "departure_date": "2026-10-30"},
         },
         "clean_reports": {
             "cedar-hollow-2n|2026-10-28": {

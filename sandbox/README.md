@@ -20,14 +20,15 @@ that category has earned. With no API key in the server environment,
 every message returns the Confirm fail-safe, by design.
 
 ## Plays (bottom of the page)
-The two live plays run end to end on the staged fixture world
+The live plays run end to end on the staged fixture world
 (jev.plays.default_fixture_data: three properties on 2026-10-28, one
-per early check-in outcome, plus the cleaner-done records). Play runs
-are kept in memory server-side; the sandbox engine's autonomy ledger
-is empty, so every action right is P1 (approve_first) — steps produce
-their drafts and are HELD at the gate, which is the point of the
-demo. Nothing is really sent or charged; any step that ever executes
-does so through the simulated channel and is labeled simulated.
+per early check-in outcome, plus the cleaner-done records and one
+mid-stay record for the camera play). Play runs are kept in memory
+server-side; the sandbox engine's autonomy ledger is empty, so every
+action right is P1 (approve_first) — steps produce their drafts and
+are HELD at the gate, which is the point of the demo. Nothing is
+really sent or charged; any step that ever executes does so through
+the simulated channel and is labeled simulated.
 
 Endpoints:
   POST /play   start a run. Body for early check-in:
@@ -37,6 +38,10 @@ Endpoints:
                {"play": "cleaner_done", "property_id": "cedar-hollow-2n",
                 "date": "2026-10-28", "cleaner_id": "cleaner-cristina",
                 "finished_at": "1:32 PM"}
+               Body for camera check (the camera event is the trigger):
+               {"play": "camera_check", "property_id": "cedar-hollow-1n",
+                "date": "2026-10-29", "camera": "backyard",
+                "ts": "2026-10-29T21:48:00", "frame_id": "f3"}
   POST /event  deliver an event to a waiting run:
                {"run_id": "...", "event": "cleaner_done",
                 "payload": {"finished_at": "1:32 PM"}}
@@ -57,3 +62,16 @@ Driving it on the page:
   House" uses the fixture whose cleaner flagged a problem (a cracked
   wine glass): the run ends held_for_human with the flag summarized,
   and the guest-ready step never runs — nothing is sent.
+- Camera check: "Camera motion — guest arriving, Studio 2N" runs
+  Play 7 with staged frame f1: the frame classifies as the expected
+  guest (Dana arrives that day), the run logs it through the
+  auto_close gate, and nobody is notified. "Camera motion — large
+  gathering, Owner's Unit 1N" uses frame f3: eleven people on the
+  patio against a booked party of four mid-stay, so the run flags
+  the OPERATOR — the notification is held at the notify_operator
+  gate with its summary preserved. This play never messages a
+  guest. Frames are staged metadata (jev.plays.vision.STAGED_FRAMES),
+  classified by the fixture vision implementation; the live vision
+  path was verified against the real API on 2026-10-27 (see
+  vision.py for the confirmed request shape) but the sandbox never
+  uses it.
