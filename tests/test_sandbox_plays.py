@@ -103,6 +103,43 @@ def test_play_cleaner_done_problem_flag_holds_and_sends_nothing():
     assert send["status"] == "pending" and send["result"] == {}
 
 
+def test_play_camera_check_gathering_notifies_operator_held():
+    srv = _srv()
+    engine, runs = _fresh()
+    out = srv.handle_play({"play": "camera_check",
+                           "property_id": "lockport-1n", "date": "2026-10-29",
+                           "camera": "backyard", "ts": "2026-10-29T21:48:00",
+                           "frame_id": "f3"},
+                          engine=engine, runs=runs)
+    assert out["status"] == "completed" and out["outcome"] == "notify_operator"
+    classify = _step(out, "classify_frame")
+    assert classify["result"]["scene"] == "large_gathering"
+    assert classify["result"]["people_count"] == 11
+    notify = _step(out, "notify_operator")
+    assert notify["action_key"] == "notify_operator"
+    assert notify["stake"] == "middle"
+    assert notify["disposition"] == "hold" and notify["status"] == "held"
+    assert notify["result"]["executed"] is False
+    assert "party of 4" in notify["result"]["summary"]
+    assert _step(out, "log_event")["status"] == "skipped"
+    # The run is in the store and fetchable by id.
+    assert srv.handle_get_run(out["run_id"], runs=runs)["run_id"] == out["run_id"]
+
+
+def test_play_camera_check_expected_guest_logs_only():
+    srv = _srv()
+    engine, runs = _fresh()
+    out = srv.handle_play({"play": "camera_check",
+                           "property_id": "lockport-2n", "date": "2026-10-28",
+                           "camera": "front-door", "ts": "2026-10-28T15:42:00",
+                           "frame_id": "f1"},
+                          engine=engine, runs=runs)
+    assert out["status"] == "completed" and out["outcome"] == "logged"
+    assert _step(out, "classify_frame")["result"]["scene"] == "expected_guest"
+    assert _step(out, "log_event")["result"]["logged"] is True
+    assert _step(out, "notify_operator")["status"] == "skipped"
+
+
 def test_play_and_event_error_paths():
     srv = _srv()
     engine, runs = _fresh()

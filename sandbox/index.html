@@ -105,6 +105,17 @@
   <button class="bigbtn" id="cd-flag">Cleaner finished — Peter's House (problem flagged)</button>
   <div class="timeline" id="cd-timeline"></div>
 
+  <h3>Play: camera check</h3>
+  <p>An outside camera reports motion — no message from anyone. Comfi Autopilot classifies
+     the staged frame, checks it against the staged calendar, and either logs it
+     (the guest who was expected, the cleaner who was scheduled, nothing of note)
+     or flags the <strong>operator</strong> (a crowd bigger than the booking, a
+     person nobody expected, a frame too dark to judge). This play never messages
+     a guest. The frames are staged metadata, not real photos.</p>
+  <button class="bigbtn" id="cc-guest">Camera motion — guest arriving, Studio 2N</button>
+  <button class="bigbtn" id="cc-gathering">Camera motion — large gathering, Owner's Unit 1N</button>
+  <div class="timeline" id="cc-timeline"></div>
+
   <p class="fine">Disclosure: pre-existing — Jev, the decision model by TypeSafe AI
      used inside Comfi Autopilot, the operator's hand-labeled dataset, and the
      Oct 7–14 pilot. Everything else on this page — the Comfi Autopilot layer —
@@ -153,6 +164,13 @@
       if (r.arrival_today !== undefined) out += '<div>Arrival today: <strong>' +
         (r.arrival_today ? 'yes' : 'no') +
         (r.property ? ' · ' + esc(r.property) : '') + '</div>';
+      if (r.scene) out += '<div>Frame classified: <strong>' + esc(r.scene) + '</strong>' +
+        (r.people_count !== undefined && r.people_count !== null ? ' · people: ' + r.people_count : '') +
+        (r.note ? ' · &ldquo;' + esc(r.note) + '&rdquo;' : '') +
+        (r.route ? ' · route: <strong>' + esc(r.route) + '</strong>' : '') +
+        (r.reason ? ' · ' + esc(r.reason) : '') + '</div>';
+      if (r.summary) out += '<div class="draft">Operator notification: &ldquo;' + esc(r.summary) + '&rdquo;</div>';
+      if (r.logged) out += '<div><strong>Logged only</strong> — no notification, no message to anyone.</div>';
       if (r.error) out += '<div class="err">' + esc(r.error) + (r.on_record ? ' (on record: ' + esc(r.on_record) + ')' : '') + '</div>';
       if (r.executed === true) out += '<div class="sim">EXECUTED through the simulated channel — no real send happened</div>';
       if (r.executed === false) out += '<div class="heldnote">HELD for approval — nothing was sent</div>';
@@ -210,6 +228,18 @@
       { property_id: 'lockport-2n', cleaner_id: 'cleaner-cristina', finished_at: '1:32 PM' });
     document.getElementById('cd-flag').onclick = cdFire(
       { property_id: 'peters-house', cleaner_id: 'cleaner-jader', finished_at: '3:05 PM' });
+
+    const ccFire = body => async () => {
+      const run = await post('/play', Object.assign(
+        { play: 'camera_check' }, body));
+      renderRun(run, document.getElementById('cc-timeline'));
+    };
+    document.getElementById('cc-guest').onclick = ccFire(
+      { property_id: 'lockport-2n', date: '2026-10-28', camera: 'front-door',
+        ts: '2026-10-28T15:42:00', frame_id: 'f1' });
+    document.getElementById('cc-gathering').onclick = ccFire(
+      { property_id: 'lockport-1n', date: '2026-10-29', camera: 'backyard',
+        ts: '2026-10-29T21:48:00', frame_id: 'f3' });
   </script>
 </body>
 </html>
