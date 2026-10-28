@@ -31,7 +31,7 @@ The graded record so far, from the eval harness in this repo (89-message eval se
 
 Pre-existing, disclosed as background and baseline only: Jev, the decision model by TypeSafe AI; the operator's hand-labeled dataset of real guest messages; and the shadow pilot the operator ran Oct 7–14, 2026, which graded the triage decisions the eval set is built from. None of that is presented as hackathon work.
 
-Built during the hackathon, Oct 26 to Nov 4, 2026 — the Comfi Autopilot layer in this repo: the port of the pipeline to the Meta Model API (Muse Spark for fast triage, Muse Wonder for reasoning and drafts), the eval harness and confidence ledger, the graduated-autonomy ladder, the plays engine (early check-in, cleaner-done to guest-ready), the outcome metrics, and this judge sandbox.
+Built during the hackathon, Oct 26 to Nov 4, 2026 — the Comfi Autopilot layer in this repo: the port of the pipeline to the Meta Model API (Muse Spark for fast triage, Muse Wonder for reasoning and drafts), the eval harness and confidence ledger, the graduated-autonomy ladder, the plays engine (early check-in, cleaner-done to guest-ready), the outcome metrics, the deterministic frame gate for camera stills (plain code that refuses any frame without a usable, unclipped subject before a model or a human ever sees it as evidence), and this judge sandbox.
 
 ## Run it
 
