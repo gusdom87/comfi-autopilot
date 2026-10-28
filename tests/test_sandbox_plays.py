@@ -140,6 +140,72 @@ def test_play_camera_check_expected_guest_logs_only():
     assert _step(out, "notify_operator")["status"] == "skipped"
 
 
+IH_LEAK = ("Hi, there's water leaking under the kitchen sink - it's "
+           "dripping steadily and the cabinet floor is wet.")
+IH_GAS = "Hi, I smell gas near the stove, kind of strong. Should I be worried?"
+
+
+def test_play_in_stay_issue_dispatch_held_and_event_flow():
+    srv = _srv()
+    engine, runs = _fresh()
+    out = srv.handle_play({"play": "in_stay_issue", "message": IH_LEAK,
+                           "property_id": "cedar-hollow-1n",
+                           "date": "2026-10-29"}, engine=engine, runs=runs)
+    assert out["play"] == "in_stay_issue" and out["status"] == "waiting"
+    assert out["outcome"] == "leak"
+    reality = _step(out, "reality_check")
+    assert reality["result"]["stay_in_progress"] is True
+    assert reality["result"]["guest"] == "Alex"
+    assert reality["result"]["vendor"] == "Fixture Handyman"
+
+    dispatch = _step(out, "dispatch_vendor")
+    assert dispatch["action_key"] == "dispatch_vendor"
+    assert dispatch["stake"] == "middle"
+    assert dispatch["required_right"] == "approve_first"
+    assert dispatch["disposition"] == "hold" and dispatch["status"] == "held"
+    assert dispatch["result"]["executed"] is False
+    assert "Water shutoff" in dispatch["result"]["access_notes"]
+    # A standard issue never flags the operator.
+    assert _step(out, "notify_operator")["status"] == "skipped"
+    assert _step(out, "wait_vendor_eta")["status"] == "waiting"
+
+    eta = srv.handle_event({"run_id": out["run_id"], "event": "vendor_eta",
+                            "payload": {"eta": "3:30 PM"}},
+                           engine=engine, runs=runs)
+    assert eta["status"] == "waiting"
+    update = _step(eta, "guest_eta_update")
+    assert "3:30 PM" in update["result"]["draft"]
+    assert update["status"] == "held"
+    assert update["result"]["executed"] is False
+
+    done = srv.handle_event({"run_id": out["run_id"], "event": "vendor_done",
+                             "payload": {"finished_at": "4:05 PM"}},
+                            engine=engine, runs=runs)
+    assert done["status"] == "completed"
+    final = _step(done, "guest_done_update")
+    assert "fixed" in final["result"]["draft"]
+    assert srv.handle_get_run(out["run_id"], runs=runs)["run_id"] == out["run_id"]
+
+
+def test_play_in_stay_issue_gas_safety_notifies_operator():
+    srv = _srv()
+    engine, runs = _fresh()
+    out = srv.handle_play({"play": "in_stay_issue", "message": IH_GAS,
+                           "property_id": "cedar-hollow-1n",
+                           "date": "2026-10-29"}, engine=engine, runs=runs)
+    assert out["outcome"] == "safety_gas_smell"
+    reply = _step(out, "guest_reply")
+    assert "head outside" in reply["result"]["draft"]
+    assert "towel" not in reply["result"]["draft"]   # no self-help
+    notify = _step(out, "notify_operator")
+    assert notify["action_key"] == "notify_operator"
+    assert notify["disposition"] == "hold" and notify["status"] == "held"
+    assert notify["result"]["executed"] is False
+    assert notify["result"]["summary"].startswith("SAFETY")
+    assert "Owner's Unit 1N" in notify["result"]["summary"]
+    assert _step(out, "dispatch_vendor")["status"] == "held"
+
+
 def test_play_and_event_error_paths():
     srv = _srv()
     engine, runs = _fresh()

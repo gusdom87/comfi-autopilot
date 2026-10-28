@@ -47,6 +47,11 @@ class PropertyInfo:
     # staged instruction lines, never a real door code.
     door_note: str = ""
     parking_note: str = ""
+    # In-home facts for issue handling (Play 4). Fixture wording only:
+    # staged instruction lines that ride along in a dispatch artifact
+    # so the handyman knows the hardware - never real codes.
+    lock_note: str = ""
+    water_note: str = ""
 
 
 @dataclass
@@ -87,6 +92,22 @@ class Stay:
     guest_count: int = 2                   # booked party size
     arrival_date: str = ""
     departure_date: str = ""
+
+
+@dataclass
+class Vendor:
+    """A vendor on the roster (Play 4). covers lists the issue types
+    the vendor takes (empty = all of them); properties lists the units
+    covered (empty = all of them). window_note and rates_note are
+    fixture language, quoted verbatim in dispatch artifacts - there
+    is no real vendor and there are no real rates behind them in
+    this build."""
+    vendor_id: str
+    name: str
+    covers: tuple = ()
+    properties: tuple = ()
+    window_note: str = ""
+    rates_note: str = ""
 
 
 @dataclass
@@ -133,6 +154,12 @@ class RealityContext(Protocol):
         None means: no clean is on record (a play must fail safe)."""
         ...
 
+    def get_vendor(self, issue_type: str, property_id: str) -> Vendor | None:
+        """The roster vendor who covers this issue type at this
+        property, if there is one. None means: nobody on the roster
+        takes it (a play must fail safe)."""
+        ...
+
 
 class FixtureContext:
     """RealityContext backed by staged data.
@@ -143,6 +170,7 @@ class FixtureContext:
       "arrivals": {"<property_id>|<date>": {Arrival fields}},
       "stays": {"<property_id>|<date>": {Stay fields}},
       "clean_reports": {"<property_id>|<date>": {CleanReport fields}},
+      "vendors": {vendor_id: {Vendor fields}},
     }
     """
 
@@ -165,6 +193,14 @@ class FixtureContext:
         for key, kw in data.get("clean_reports", {}).items():
             pid, date = key.split("|", 1)
             self._reports[key] = CleanReport(property_id=pid, date=date, **kw)
+        self._vendors = {}
+        for vid, kw in data.get("vendors", {}).items():
+            kw = dict(kw)
+            if "covers" in kw:
+                kw["covers"] = tuple(kw["covers"])
+            if "properties" in kw:
+                kw["properties"] = tuple(kw["properties"])
+            self._vendors[vid] = Vendor(vendor_id=vid, **kw)
 
     def get_property(self, property_id: str) -> PropertyInfo | None:
         return self._props.get(property_id)
@@ -180,6 +216,16 @@ class FixtureContext:
 
     def get_clean_report(self, property_id: str, date: str) -> CleanReport | None:
         return self._reports.get(f"{property_id}|{date}")
+
+    def get_vendor(self, issue_type: str, property_id: str) -> Vendor | None:
+        for vendor in self._vendors.values():
+            if vendor.covers and issue_type not in vendor.covers \
+                    and "*" not in vendor.covers:
+                continue
+            if vendor.properties and property_id not in vendor.properties:
+                continue
+            return vendor
+        return None
 
     def ready_time_minutes(self, property_id: str, date: str) -> int | None:
         prop = self.get_property(property_id)
@@ -224,6 +270,9 @@ class LiveTurnoReadAdapter:
     def get_clean_report(self, property_id: str, date: str):
         self._stub()
 
+    def get_vendor(self, issue_type: str, property_id: str):
+        self._stub()
+
 
 def default_fixture_data() -> dict:
     """The staged world the demo runs in. Three Cedar Hollow-style units on
@@ -238,6 +287,9 @@ def default_fixture_data() -> dict:
     of four is mid-stay at cedar-hollow-1n on 2026-10-29, which is what
     the staged large-gathering frame (vision.STAGED_FRAMES f3) is
     checked against. The frames themselves live in plays/vision.py.
+    The same stay is Play 4's (in-stay issues) reality: Alex is in
+    residence at cedar-hollow-1n on 2026-10-29, and the vendor roster
+    carries one fixture handyman covering every property and issue.
     Check-in notes are staged instruction lines, never real codes.
     """
     return {
@@ -250,7 +302,13 @@ def default_fixture_data() -> dict:
                                          "code from your check-in message.",
                             "parking_note": "You are welcome to park in the "
                                             "driveway; street parking in "
-                                            "front works too."},
+                                            "front works too.",
+                            "lock_note": "Front door is a keypad deadbolt; "
+                                         "the battery pack sits on the "
+                                         "inside face of the door.",
+                            "water_note": "Water shutoff is in the basement "
+                                          "utility room, on the wall by "
+                                          "the water heater."},
             "cedar-hollow-2n": {"name": "Studio 2N, Cedar Hollow",
                             "standard_checkin": "16:00",
                             "typical_clean_minutes": 150,
@@ -259,7 +317,10 @@ def default_fixture_data() -> dict:
                                          "code from your check-in message.",
                             "parking_note": "Please park in the driveway; "
                                             "street parking in front works "
-                                            "too."},
+                                            "too.",
+                            "lock_note": "Studio door is a keypad deadbolt.",
+                            "water_note": "Water shutoff is under the "
+                                          "kitchen sink cabinet."},
             "peters-house": {"name": "Peter's House",
                              "standard_checkin": "16:00",
                              "typical_clean_minutes": 150,
@@ -267,7 +328,11 @@ def default_fixture_data() -> dict:
                              "door_note": "The front door keypad takes the "
                                           "code from your check-in message.",
                              "parking_note": "You are welcome to park in "
-                                             "the driveway."},
+                                             "the driveway.",
+                             "lock_note": "Front door is a keypad deadbolt "
+                                          "over a lever handle.",
+                             "water_note": "Water shutoff is in the "
+                                           "first-floor utility closet."},
         },
         "turnovers": {
             "cedar-hollow-2n|2026-10-28": {
@@ -296,5 +361,13 @@ def default_fixture_data() -> dict:
                 "cleaner_id": "cleaner-jader",
                 "problem_flag": "Cracked wine glass found in the sink; "
                                 "one hand towel stained and set aside."},
+        },
+        "vendors": {
+            "vendor-fixture-handyman": {
+                "name": "Fixture Handyman", "covers": [], "properties": [],
+                "window_note": "Same-day window 8 AM-8 PM; typical arrival "
+                               "inside 2 hours of dispatch.",
+                "rates_note": "Fixture rate: $95 service call, billed to "
+                              "the operator, never to the guest."},
         },
     }

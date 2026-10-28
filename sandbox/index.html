@@ -116,6 +116,24 @@
   <button class="bigbtn" id="cc-gathering">Camera motion — large gathering, Owner's Unit 1N</button>
   <div class="timeline" id="cc-timeline"></div>
 
+  <h3>Play: in-stay issue → handyman dispatch</h3>
+  <p>A guest who is already in the home reports something broken. Comfi Autopilot identifies
+     the issue from the message, checks who is actually staying, drafts the reply in the
+     operator's voice, and composes the handyman dispatch — the dispatch send is gated in
+     the middle of the ladder. A safety issue (gas, smoke, flooding, no heat) skips the
+     fix-it advice entirely, gives the guest safety guidance, and flags the
+     <strong>operator</strong> in the same run. When the vendor sends an ETA, and later
+     reports the work done, the guest hears about each step — every send gated.
+     The vendor and his rates are fixtures; the dispatch is simulated or held.</p>
+  <button class="bigbtn" id="ih-leak">Guest reports a leak — Owner's Unit 1N, mid-stay</button>
+  <button class="bigbtn" id="ih-gas">Guest smells gas — Owner's Unit 1N, mid-stay (safety)</button>
+  <div class="timeline" id="ih-timeline"></div>
+  <p id="ih-eventrow" style="display:none">
+    <button class="bigbtn" id="ih-eta">Vendor update: arriving 3:30 PM</button>
+    <button class="bigbtn" id="ih-done">Vendor reports done</button>
+    <span class="fine">Delivers the <code>vendor_eta</code> / <code>vendor_done</code> events to the waiting run.</span>
+  </p>
+
   <p class="fine">Disclosure: pre-existing — Jev, the decision model by TypeSafe AI
      used inside Comfi Autopilot, the operator's hand-labeled dataset, and the
      Oct 7–14 pilot. Everything else on this page — the Comfi Autopilot layer —
@@ -169,6 +187,12 @@
         (r.note ? ' · &ldquo;' + esc(r.note) + '&rdquo;' : '') +
         (r.route ? ' · route: <strong>' + esc(r.route) + '</strong>' : '') +
         (r.reason ? ' · ' + esc(r.reason) : '') + '</div>';
+      if (r.issue) out += '<div>Issue: <strong>' + esc(r.issue) + '</strong>' +
+        (r.safety ? ' · <span class="err">SAFETY — operator flagged, no self-help</span>' : '') +
+        (r.stay_in_progress !== undefined ? ' · stay in progress: ' + (r.stay_in_progress ? 'yes' : 'no') : '') +
+        (r.vendor ? ' · vendor: ' + esc(r.vendor) : '') + '</div>';
+      if (r.access_notes) out += '<div>Access notes for the vendor: ' + esc(r.access_notes) + '</div>';
+      if (r.eta) out += '<div>Vendor ETA: <strong>' + esc(r.eta) + '</strong></div>';
       if (r.summary) out += '<div class="draft">Operator notification: &ldquo;' + esc(r.summary) + '&rdquo;</div>';
       if (r.logged) out += '<div><strong>Logged only</strong> — no notification, no message to anyone.</div>';
       if (r.error) out += '<div class="err">' + esc(r.error) + (r.on_record ? ' (on record: ' + esc(r.on_record) + ')' : '') + '</div>';
@@ -240,6 +264,29 @@
     document.getElementById('cc-gathering').onclick = ccFire(
       { property_id: 'cedar-hollow-1n', date: '2026-10-29', camera: 'backyard',
         ts: '2026-10-29T21:48:00', frame_id: 'f3' });
+
+    let ihRunId = null;
+    const ihRender = run => {
+      renderRun(run, document.getElementById('ih-timeline'));
+      document.getElementById('ih-eventrow').style.display =
+        (run.status === 'waiting') ? 'block' : 'none';
+    };
+    const ihFire = message => async () => {
+      const run = await post('/play', { play: 'in_stay_issue', message,
+        property_id: 'cedar-hollow-1n', date: '2026-10-29' });
+      ihRunId = run.run_id || null;
+      ihRender(run);
+    };
+    document.getElementById('ih-leak').onclick = ihFire(
+      "Hi, there's water leaking under the kitchen sink - it's dripping steadily and the cabinet floor is wet.");
+    document.getElementById('ih-gas').onclick = ihFire(
+      "Hi, I smell gas near the stove, kind of strong. Should I be worried?");
+    const ihEvent = (event, payload) => async () => {
+      if (!ihRunId) return;
+      ihRender(await post('/event', { run_id: ihRunId, event, payload }));
+    };
+    document.getElementById('ih-eta').onclick = ihEvent('vendor_eta', { eta: '3:30 PM' });
+    document.getElementById('ih-done').onclick = ihEvent('vendor_done', { finished_at: '4:05 PM' });
   </script>
 </body>
 </html>
