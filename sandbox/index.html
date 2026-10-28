@@ -1,207 +1,591 @@
 <!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><title>Comfi Autopilot — judge sandbox</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<!-- Loaded without blocking render: if the font CDN is unreachable, the fallback stacks carry the layout. -->
+<link rel="stylesheet" media="print" onload="this.media='all'"
+      href="https://fonts.googleapis.com/css2?family=Gabarito:wght@500;600;700;800&amp;family=Instrument+Sans:wght@400;500;600;700&amp;display=swap">
 <style>
-  body { font-family: system-ui, sans-serif; max-width: 760px; margin: 2rem auto; padding: 0 1rem; }
-  textarea { width: 100%; } .chip { margin: 0.25rem 0.25rem 0.25rem 0; }
-  #card { border: 1px solid #ccc; border-radius: 8px; padding: 1rem; margin-top: 1rem; display: none; }
-  .bar { height: 10px; background: #eee; border-radius: 5px; } .fill { height: 10px; background: #2a7; border-radius: 5px; }
-  .fine { color: #555; font-size: 0.9em; }
-  hr { margin: 2.5rem 0 1.5rem; border: none; border-top: 2px solid #ddd; }
-  .staged { background: #fff7e6; border: 1px solid #d9a62e; border-radius: 8px; padding: 0.7rem 1rem; }
-  .timeline { margin-top: 1rem; }
-  .runhead { border: 1px solid #bbb; border-radius: 8px; padding: 0.7rem 1rem; background: #f7f7f7; font-size: 1.05em; }
-  .step { border-left: 6px solid #ccc; background: #fbfbfb; border-radius: 0 8px 8px 0;
-          padding: 0.6rem 1rem; margin: 0.5rem 0 0.5rem 0.4rem; }
-  .step.s-done { border-left-color: #2a7; }
-  .step.s-held { border-left-color: #d9a62e; background: #fffdf4; }
-  .step.s-waiting { border-left-color: #36c; background: #f4f8ff; }
-  .step.s-failed { border-left-color: #c33; background: #fff5f5; }
-  .step.s-skipped, .step.s-pending { border-left-color: #bbb; color: #666; }
-  .step .sname { font-weight: 700; font-size: 1.05em; }
-  .kind { display: inline-block; font-size: 0.8em; font-weight: 700; text-transform: uppercase;
-          background: #e8e8e8; border-radius: 4px; padding: 0.1em 0.5em; margin-left: 0.4em; }
-  .kind.k-action { background: #fde9c8; } .kind.k-wait { background: #d6e6ff; }
-  .status { font-weight: 700; text-transform: uppercase; font-size: 0.9em; }
-  .gate { margin-top: 0.4rem; background: #fff3d1; border: 1px dashed #d9a62e; border-radius: 6px;
-          padding: 0.4rem 0.7rem; font-size: 0.98em; }
-  .draft { margin-top: 0.4rem; border-left: 3px solid #2a7; padding: 0.2rem 0.7rem; color: #222; }
-  .sim { margin-top: 0.3rem; font-weight: 700; color: #2a7; }
-  .heldnote { margin-top: 0.3rem; font-weight: 700; color: #9a6d00; }
-  .err { color: #b00; font-weight: 600; }
-  .bigbtn { font-size: 1.05em; padding: 0.45em 1em; margin: 0.4rem 0.4rem 0.4rem 0; }
+  /* ---- tokens (design/spec.md) ------------------------------------ */
+  :root {
+    --font-display: "Gabarito", "Arial", sans-serif;
+    --font-text: "Instrument Sans", system-ui, sans-serif;
+    --fs-h1: 40px; --fs-h2: 24px; --fs-h3: 20px;
+    --fs-body: 16px; --lh-body: 24px; --fs-small: 14px; --fs-caption: 12px;
+
+    --ink: #101E3C; --navy: #101E3C;
+    --cream: #F7F3EB; --panel: #FFFDF8; --well: #F1EAD9;
+    --amber: #C7924B; --tan: #D9B07A; --line: #D9D4C7;
+    --green: #2F7D5B; --danger: #B24A3A; --muted: #5B6472;
+
+    --r-sm: 6px; --r-lg: 14px; --r-round: 50%;
+
+    --pressed: inset 0 1px 0 rgba(247,243,235,.8), 1px 1px 0 rgba(16,30,60,.10),
+               3px 5px 6px rgba(16,30,60,.08), 12px 18px 28px rgba(16,30,60,.10);
+    /* nested rows (inbox rows, run steps): the stack without its far ambient layer */
+    --pressed-row: inset 0 1px 0 rgba(247,243,235,.8), 1px 1px 0 rgba(16,30,60,.10),
+                   3px 5px 6px rgba(16,30,60,.08);
+    --deboss: inset 4px 6px 10px rgba(16,30,60,.14), inset 1px 1px 2px rgba(16,30,60,.12),
+              inset -1px -1px 0 rgba(247,243,235,.85);
+
+    /* paper grain: offset speckle tiles of unequal size, CSS only */
+    --grain: radial-gradient(circle, rgba(16,30,60,.07) 0 .5px, transparent .9px),
+             radial-gradient(circle, rgba(16,30,60,.045) 0 .5px, transparent .9px),
+             radial-gradient(circle, rgba(199,146,75,.08) 0 .6px, transparent 1px);
+    --grain-size: 7px 7px, 11px 13px, 17px 19px;
+  }
+  @media (max-width: 719px) { :root { --fs-h1: 30px; --fs-h2: 20px; --fs-h3: 18px; } }
+
+  /* ---- base ------------------------------------------------------- */
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body { margin: 0; color: var(--ink); font: 400 var(--fs-body)/var(--lh-body) var(--font-text);
+         background-color: var(--cream); background-image: var(--grain); background-size: var(--grain-size);
+         -webkit-font-smoothing: antialiased; }
+  h1, h2, h3 { margin: 0; font-family: var(--font-display); font-weight: 700; }
+  p { margin: 0 0 12px; }
+  code { font: 500 .88em/1 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 2px 5px;
+         border-radius: var(--r-sm); background: rgba(16,30,60,.06); overflow-wrap: anywhere; }
+  :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .display { text-transform: uppercase; letter-spacing: -.015em; line-height: 1; }
+  .display::after { content: "."; }
+  .cap, label { display: block; font: 600 var(--fs-caption)/16px var(--font-text); letter-spacing: .14em;
+                text-transform: uppercase; color: var(--muted); }
+  .fine { color: var(--muted); font-size: var(--fs-small); line-height: 20px; }
+  .err { color: var(--danger); font-weight: 600; }
+  .panel { padding: 24px; border-radius: var(--r-lg); background-color: var(--panel);
+           background-image: var(--grain); background-size: var(--grain-size); box-shadow: var(--pressed); }
+
+  /* ---- controls --------------------------------------------------- */
+  label { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; min-width: 0; }
+  select, textarea { font: 400 var(--fs-body)/var(--lh-body) var(--font-text); color: var(--ink);
+                     letter-spacing: 0; text-transform: none; }
+  select { -webkit-appearance: none; appearance: none; min-width: 0; max-width: 100%; padding: 10px 40px 10px 14px;
+           border: 1px solid var(--line); border-radius: var(--r-sm); cursor: pointer; box-shadow: var(--pressed-row);
+           background: var(--panel) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8'%3E%3Cpath d='M1 1.5l5 5 5-5' fill='none' stroke='%23101E3C' stroke-width='1.8'/%3E%3C/svg%3E") no-repeat right 14px center / 12px 8px; }
+  textarea { display: block; width: 100%; padding: 16px 18px; border: 0; border-radius: var(--r-sm);
+             background: var(--well); box-shadow: var(--deboss); resize: vertical; }
+  textarea::placeholder { color: var(--muted); }
+  button { font: inherit; color: inherit; }
+  .bigbtn, #go { display: inline-flex; align-items: center; gap: 8px; margin: 0; padding: 12px 18px;
+                 border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--panel); color: var(--ink);
+                 font: 600 15px/20px var(--font-text); text-align: left; cursor: pointer; box-shadow: var(--pressed-row);
+                 transition: transform .08s ease, box-shadow .08s ease, background-color .08s ease; }
+  .bigbtn:active, #go:active { transform: translate(1px, 1px); box-shadow: var(--deboss); }
+  .bigbtn.is-on { background: var(--well); box-shadow: inset 4px 0 0 var(--amber), var(--deboss); }
+  #go, #ec-run { padding: 13px 28px; border-color: transparent; background: var(--amber); color: var(--navy); font-weight: 700; }
+  #ec-done, #ih-eta, #ih-done { border-color: transparent; background: var(--navy); color: var(--cream); }
+
+  /* ---- shell: navy rail + main ------------------------------------ */
+  .shell { display: grid; grid-template-columns: 248px minmax(0, 1fr); gap: 24px; align-items: start;
+           max-width: 1560px; margin: 0 auto; padding: 16px; }
+  .main { display: grid; gap: 28px; min-width: 0; }
+  .rail { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 28px; height: calc(100vh - 32px);
+          overflow-y: auto; padding: 28px 14px 18px; border-radius: var(--r-lg); background: var(--navy);
+          color: var(--cream); box-shadow: var(--pressed); }
+  .rail :focus-visible { outline-color: var(--cream); }
+  .rail-top { display: grid; gap: 28px; }
+  .wordmark { padding: 0 10px; font: 800 24px/1 var(--font-display); letter-spacing: -.02em; white-space: nowrap; }
+  .wordmark .dot { display: inline-block; width: .24em; height: .24em; margin-left: .05em;
+                   border-radius: var(--r-round); background: var(--amber); }
+  .railnav { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+  .railnav a { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: var(--r-sm);
+               color: var(--cream); text-decoration: none; opacity: .8;
+               font: 600 13px/1 var(--font-text); letter-spacing: .14em; text-transform: uppercase; }
+  .railnav a[aria-current] { opacity: 1; background: rgba(247,243,235,.09); box-shadow: inset 3px 0 0 var(--tan); }
+  .railnav svg, .strip svg { flex: none; fill: none; stroke: currentColor; stroke-width: 1.6;
+                             stroke-linecap: round; stroke-linejoin: round; }
+  .railnav svg { width: 20px; height: 20px; }
+  .p1 { margin-top: auto; padding: 16px 10px 2px; border-top: 1px solid rgba(247,243,235,.14); }
+  .p1 .cap { color: var(--tan); }
+  .p1-rung { display: block; margin: 6px 0 8px; font: 700 22px/1.05 var(--font-display);
+             letter-spacing: -.01em; text-transform: uppercase; }
+  .p1 p { margin: 0 0 8px; font-size: var(--fs-small); line-height: 20px; opacity: .88; }
+
+  .masthead { display: grid; grid-template-columns: minmax(200px, 280px) minmax(0, 1fr); gap: 32px;
+              align-items: start; padding: 14px 6px 0; }
+  .masthead h1 { font-size: var(--fs-h1); }
+  .masthead p { max-width: 80ch; margin: 0; }
+
+  /* ---- triage console: inbox + detail ----------------------------- */
+  #triage, #plays, #cameras, .play { scroll-margin-top: 16px; }
+  .console { display: grid; grid-template-columns: minmax(320px, 410px) minmax(0, 1fr); gap: 20px; align-items: start; }
+  .inbox { padding: 22px 16px 16px; }
+  .inbox-head { display: flex; align-items: center; gap: 12px; padding: 0 6px; }
+  .inbox-head h2 { font-size: var(--fs-h2); }
+  .count { display: inline-grid; place-items: center; width: 28px; height: 28px; border-radius: var(--r-round);
+           background: var(--amber); color: var(--navy); font: 700 14px/1 var(--font-display); }
+  .inbox > .cap { padding: 8px 6px 14px; }
+  .rows { display: grid; gap: 10px; }
+  .chip { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 14px; align-items: center; width: 100%;
+          margin: 0; padding: 14px 14px 14px 16px; border: 0; border-radius: var(--r-sm); background: var(--panel);
+          text-align: left; cursor: pointer; box-shadow: var(--pressed-row); }
+  .chip:active { box-shadow: var(--deboss); }
+  .chip.is-selected { background: linear-gradient(rgba(217,176,122,.24), rgba(217,176,122,.24)), var(--panel);
+                      box-shadow: inset 4px 0 0 var(--amber), var(--pressed-row); }
+  .row-title { display: block; font: 700 17px/22px var(--font-display); }
+  .row-text { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+              margin-top: 3px; color: var(--muted); font-size: var(--fs-small); line-height: 20px; }
+  .row-side { display: flex; align-items: center; gap: 10px; }
+  .row-conf { min-width: 34px; text-align: right; font: 600 var(--fs-small)/1 var(--font-text); }
+  .badge { display: inline-block; min-width: 84px; padding: 8px 10px; border-radius: var(--r-sm); text-align: center;
+           font: 700 12px/1 var(--font-display); letter-spacing: .1em; text-transform: uppercase; }
+  .t-act { background: var(--navy); color: var(--cream); }
+  .t-confirm { background: var(--amber); color: var(--navy); }
+  .t-ignore { background: rgba(217,176,122,.55); color: rgba(16,30,60,.78); }
+  .t-none { color: var(--muted); box-shadow: inset 0 0 0 1px var(--line); }
+
+  .detail { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  #prop { font: 700 18px/24px var(--font-display); }
+  .det-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+  #card { display: none; }
+  #card > * + * { margin-top: 16px; }
+  .decision { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px 28px;
+              padding: 22px 26px; border-radius: var(--r-sm); background: var(--navy); color: var(--cream);
+              box-shadow: var(--pressed); }
+  #card[data-tone="confirm"] .decision { background: var(--amber); color: var(--navy); }
+  #card[data-tone="ignore"] .decision { background: var(--tan); color: var(--navy); }
+  #cat { font-size: 56px; line-height: .95; letter-spacing: -.02em; text-transform: uppercase; }
+  #cat .cat-word::after { content: "."; }
+  #cat .cat-note { display: block; margin-top: 10px; font: 600 var(--fs-small)/20px var(--font-text);
+                   letter-spacing: 0; text-transform: none; }
+  .decision-conf { flex: 0 1 220px; padding-left: 28px; border-left: 1px solid currentColor; border-left-color: rgba(127,127,127,.45); }
+  #conf { margin: 0 0 10px; }
+  .conf-cap { display: block; font: 600 var(--fs-caption)/16px var(--font-text); letter-spacing: .14em; text-transform: uppercase; }
+  .conf-num { display: block; margin-top: 4px; font: 700 44px/1 var(--font-display); letter-spacing: -.02em; color: var(--amber); }
+  #card[data-tone="confirm"] .conf-num, #card[data-tone="ignore"] .conf-num { color: var(--navy); }
+  .bar { height: 8px; border-radius: var(--r-sm); background: rgba(247,243,235,.2); overflow: hidden; }
+  .fill { height: 8px; border-radius: var(--r-sm); background: var(--amber); }
+  #card[data-tone="confirm"] .bar, #card[data-tone="ignore"] .bar { background: rgba(16,30,60,.16); }
+  #card[data-tone="confirm"] .fill, #card[data-tone="ignore"] .fill { background: var(--navy); }
+  .draftp { margin: 0; }
+  .draftp strong, .specrows strong { display: block; font: 600 var(--fs-caption)/16px var(--font-text);
+                                     letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+  #draft { display: block; margin-top: 8px; padding: 16px 18px; border-radius: var(--r-sm);
+           background: var(--well); box-shadow: var(--deboss); white-space: pre-wrap; }
+  .specrows p { display: grid; grid-template-columns: 88px minmax(0, 1fr); gap: 12px; margin: 0;
+                padding: 12px 0; border-top: 1px solid var(--line); }
+  .specrows strong { padding-top: 4px; }
+  #meta { margin: 0; padding: 12px 14px; border-radius: var(--r-sm); background: var(--well); box-shadow: var(--deboss); }
+
+  /* ---- plays: numbered strip + play panels ------------------------ */
+  .plays { display: grid; gap: 20px; }
+  .sec-head { padding: 10px 6px 0; }
+  .sec-head h2 { font-size: var(--fs-h2); }
+  .strip { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 14px; margin: 0; padding: 0; list-style: none; }
+  .strip a { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "num icon" "title title" "text text";
+             align-content: start; gap: 10px; height: 100%; padding: 18px 16px 20px; border-radius: var(--r-sm);
+             background: var(--panel); color: inherit; text-decoration: none; box-shadow: var(--pressed); }
+  .strip .num { grid-area: num; font: 700 40px/.9 var(--font-display); letter-spacing: -.03em; }
+  .strip svg { grid-area: icon; width: 24px; height: 24px; }
+  .strip-title { grid-area: title; font: 700 15px/18px var(--font-display); letter-spacing: .02em; text-transform: uppercase; }
+  .strip-title::after { content: "."; }
+  .strip-text { grid-area: text; color: var(--muted); font-size: var(--fs-small); line-height: 20px; }
+  .staged { margin: 0; padding: 16px 20px; border-radius: var(--r-sm); background: var(--well);
+            box-shadow: inset 4px 0 0 var(--amber), var(--deboss); }
+  .play-head { display: flex; align-items: baseline; gap: 16px; margin-bottom: 18px; padding-bottom: 14px;
+               border-bottom: 1px solid var(--line); }
+  .play-head .num { font: 700 36px/1 var(--font-display); letter-spacing: -.03em; }
+  .play-head h3 { font-size: var(--fs-h3); line-height: 1.2; }
+  .play-grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 28px; align-items: start; }
+  .play-ctl, .play-out { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-content: start; min-width: 0; }
+  .play-ctl > p { margin: 0; }
+  .fields { display: flex; flex-wrap: wrap; gap: 12px; }
+  .scenarios { display: grid; gap: 10px; }
+  .scenarios .bigbtn { width: 100%; }
+  .play-out > p { margin: 0; }
+  .play-out .bigbtn { margin: 0 10px 10px 0; }
+
+  /* ---- run timelines (rendered by renderRun) ---------------------- */
+  .timeline { min-height: 60px; padding: 14px; border-radius: var(--r-sm); background: var(--well);
+              box-shadow: var(--deboss); font-size: var(--fs-small); line-height: 21px; overflow-wrap: break-word; }
+  .timeline:empty::before { content: "No run yet."; display: block; padding: 4px 2px; color: var(--muted); }
+  .timeline > p { margin: 0 0 10px; }
+  .runhead { padding: 12px 14px; border-radius: var(--r-sm); background: var(--panel);
+             box-shadow: inset 4px 0 0 var(--navy), var(--pressed-row); }
+  .step { margin: 10px 0 0; padding: 12px 14px 12px 18px; border-radius: var(--r-sm); background: var(--panel);
+          box-shadow: inset 4px 0 0 var(--line), var(--pressed-row); }
+  .step.s-done { box-shadow: inset 4px 0 0 var(--green), var(--pressed-row); }
+  .step.s-held { box-shadow: inset 4px 0 0 var(--amber), var(--pressed-row); }
+  .step.s-waiting { box-shadow: inset 4px 0 0 var(--navy), var(--pressed-row); }
+  .step.s-failed { box-shadow: inset 4px 0 0 var(--danger), var(--pressed-row); }
+  .step.s-skipped, .step.s-pending { color: var(--muted); background: transparent;
+                                     box-shadow: inset 4px 0 0 var(--line), inset 0 0 0 1px var(--line); }
+  .step > div { margin-top: 6px; }
+  .step ul { margin: 6px 0 0; padding-left: 20px; }
+  .step .sname { font: 700 15px/20px var(--font-display); }
+  .kind { display: inline-block; margin-left: 8px; padding: 3px 7px; border-radius: var(--r-sm); vertical-align: 1px;
+          background: rgba(16,30,60,.08); font: 700 11px/1 var(--font-text); letter-spacing: .1em; text-transform: uppercase; }
+  .kind.k-action { background: var(--tan); color: var(--navy); }
+  .kind.k-wait { background: transparent; box-shadow: inset 0 0 0 1px var(--navy); }
+  .status { font: 700 12px/1 var(--font-text); letter-spacing: .1em; text-transform: uppercase; }
+  .s-done > .status { color: var(--green); }
+  .s-failed > .status { color: var(--danger); }
+  .s-held > .status { padding: 3px 7px; border-radius: var(--r-sm); background: var(--amber); color: var(--navy); }
+  .s-waiting > .status { padding: 2px 6px; border-radius: var(--r-sm); box-shadow: inset 0 0 0 1px var(--navy); }
+  .gate { padding: 8px 12px; border: 1px dashed var(--amber); border-radius: var(--r-sm); background: rgba(199,146,75,.08); }
+  .draft { padding: 10px 14px; border-radius: var(--r-sm); background: var(--well); box-shadow: var(--deboss); }
+  .sim { font-weight: 700; color: var(--green); }
+  .step > .heldnote { display: inline-block; padding: 4px 10px; border-radius: var(--r-sm);
+                      background: var(--amber); color: var(--navy); font-weight: 700; }
+
+  /* ---- cameras: scenario cards + timeline ------------------------- */
+  .cam-desc { margin: 0 0 22px; columns: 2 340px; column-gap: 40px; }
+  .cam-grid { display: grid; grid-template-columns: minmax(0, 6fr) minmax(0, 5fr); gap: 24px; align-items: start; }
+  .cam-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  #cameras .cam-cards .bigbtn { display: grid; align-content: start; gap: 6px; width: 100%; min-height: 92px;
+                                padding: 14px 16px; box-shadow: var(--pressed); }
+  #cameras .cam-cards .bigbtn.is-on { box-shadow: inset 4px 0 0 var(--amber), var(--deboss); }
+  .cam-k { font: 700 var(--fs-caption)/16px var(--font-display); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); }
+  .cam-sep { display: none; }
+  .cam-d { font: 500 15px/20px var(--font-text); }
+  .cam-out { position: sticky; top: 16px; max-height: calc(100vh - 32px); overflow: auto; }
+
+  .foot { padding: 18px 6px 8px; border-top: 1px solid var(--line); }
+  .foot .fine { max-width: 92ch; margin: 0; }
+
+  /* hover only where a pointer can hover, so taps on touch screens don't leave rows tinted */
+  @media (hover: hover) {
+    .bigbtn:hover, #go:hover { border-color: var(--tan); }
+    .railnav a:hover { opacity: 1; background: rgba(247,243,235,.06); }
+    .chip:not(.is-selected):hover { background: linear-gradient(rgba(217,176,122,.10), rgba(217,176,122,.10)), var(--panel); }
+    .strip a:hover { background: linear-gradient(rgba(217,176,122,.10), rgba(217,176,122,.10)), var(--panel); }
+  }
+  /* ---- responsive ------------------------------------------------- */
+  @media (max-width: 1279px) {
+    .strip { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .play-grid, .cam-grid { grid-template-columns: minmax(0, 1fr); }
+    .cam-out { position: static; max-height: none; overflow: visible; }
+  }
+  @media (max-width: 1179px) { .console { grid-template-columns: minmax(0, 1fr); } }
+  @media (max-width: 1023px) {
+    /* the rail opens up: its blocks join the page column in spec order */
+    .shell { display: flex; flex-direction: column; gap: 20px; }
+    .rail, .main { display: contents; }
+    .rail-top { order: 1; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+                gap: 12px 16px; padding: 16px 18px; border-radius: var(--r-lg); background: var(--navy);
+                color: var(--cream); box-shadow: var(--pressed); }
+    .rail-top :focus-visible { outline-color: var(--cream); }
+    .wordmark { padding: 0; }
+    .railnav { display: flex; gap: 2px; }
+    .railnav a { padding: 9px 10px; font-size: 12px; }
+    .railnav svg { display: none; }
+    .masthead { order: 2; }
+    .p1 { order: 3; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: baseline; gap: 4px 14px;
+          margin: 0; padding: 14px 18px; border: 0; border-radius: var(--r-sm); background: var(--panel);
+          color: var(--ink); box-shadow: inset 4px 0 0 var(--amber), var(--pressed-row); }
+    .p1 .cap { grid-column: 1 / -1; color: var(--muted); }
+    .p1-rung { margin: 0; font-size: 18px; }
+    .p1 p { margin: 0; opacity: 1; }
+    .p1 .p1-tag { grid-column: 1 / -1; color: var(--muted); }
+    #triage { order: 4; } #plays { order: 5; } #cameras { order: 6; } .foot { order: 7; }
+  }
+  @media (max-width: 719px) {
+    .shell { padding: 12px; gap: 16px; }
+    .masthead { grid-template-columns: minmax(0, 1fr); gap: 12px; padding-top: 6px; }
+    .panel { padding: 18px 14px; }
+    .inbox { padding: 18px 12px 12px; }
+    .p1 { grid-template-columns: minmax(0, 1fr); }
+    .strip { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+    .strip a { grid-template-columns: 52px minmax(0, 1fr) 24px; grid-template-areas: "num title icon" "num text icon";
+               gap: 4px 12px; padding: 14px 16px; }
+    .strip .num { font-size: 32px; }
+    .decision { gap: 12px 20px; padding: 18px 20px; }
+    #cat { font-size: 44px; }
+    .decision-conf { flex: 1 1 120px; padding-left: 18px; }
+    .conf-num { font-size: 34px; }
+    .specrows p { grid-template-columns: minmax(0, 1fr); gap: 4px; }
+    .cam-cards { grid-template-columns: minmax(0, 1fr); }
+    .bigbtn, #go { width: 100%; justify-content: center; text-align: center; }
+    .scenarios .bigbtn, #cameras .cam-cards .bigbtn { justify-content: start; text-align: left; }
+    .play-out .bigbtn { margin: 0 0 10px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .bigbtn, #go { transition: none; }
+  }
 </style></head>
 <body>
-  <h1>Comfi Autopilot</h1>
-  <p>An autonomous operations system for short-term rentals, designed to
-     connect to Hospitable; this build runs on a staged fixture world (no live
-     Hospitable or Turno connection). Start with the first step of the operation: paste a guest
-     message. Triage returns a category, a confidence, a draft in the
-     operator's voice, a route, and a reason, plus the send right that category
-     has earned so far. The urgency decision is made by the triage layer in
-     this repo, a hackathon-built port of the operator's Jev pipeline (TypeSafe
-     AI) to Muse Spark/Wonder; Jev's original tool, the hand-labeled dataset,
-     and the Oct 7–14 pilot are pre-existing.</p>
-  <p>
-    <button class="chip" data-msg="Hi, we just got back and the door code is not working. We are standing outside with our bags.">Try: lockout</button>
-    <button class="chip" data-msg="Would it be possible to check out at 1pm instead of 11? Our flight home is late afternoon.">Try: late checkout</button>
-    <button class="chip" data-msg="Just confirming we received the receipt for the cleaning fee. All set on our end, thanks.">Try: receipt FYI</button>
-    <button class="chip" data-msg="The guests upstairs have played loud music past midnight two nights in a row and we can barely sleep.">Try: noise complaint</button>
-  </p>
-  <label>Property
-    <select id="prop">
-      <option>Cedar Hollow Garden Unit 1A</option><option>Cedar Hollow Garden Unit 1B</option>
-      <option>Cedar Hollow Studio 2A</option><option>Cedar Hollow Upper Unit 2B</option>
-      <option>Ridgeview condo</option><option>Maple Street House</option>
-    </select>
-  </label>
-  <textarea id="msg" rows="6" placeholder="Paste a guest message here"></textarea>
-  <br><button id="go">Triage</button>
-  <div id="card">
-    <h2 id="cat"></h2>
-    <div class="bar"><div class="fill" id="confbar"></div></div>
-    <p id="conf"></p>
-    <p><strong>Draft:</strong> <span id="draft"></span></p>
-    <p><strong>Route:</strong> <span id="route"></span></p>
-    <p><strong>Why:</strong> <span id="reason"></span></p>
-    <p class="fine" id="meta"></p>
-  </div>
+<div class="shell">
+  <aside class="rail">
+    <div class="rail-top">
+      <div class="wordmark" role="img" aria-label="ComfiAutopilot">ComfiAutopilot<span class="dot"></span></div>
+      <nav aria-label="Page sections">
+        <ul class="railnav">
+          <li><a href="#triage" aria-current="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 13.5 6 5h12l2.5 8.5V19h-17z"/><path d="M3.5 13.5H9l1 2h4l1-2h5.5"/></svg>Triage</a></li>
+          <li><a href="#plays"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M10 8.5v7l5.5-3.5z"/></svg>Plays</a></li>
+          <li><a href="#cameras"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 8h4L9 5.5h6L16.5 8h4v11h-17z"/><circle cx="12" cy="13.5" r="3.5"/></svg>Cameras</a></li>
+        </ul>
+      </nav>
+    </div>
+    <div class="p1">
+      <span class="cap">Autonomy rung</span>
+      <strong class="p1-rung">Approve-first. P1.</strong>
+      <p>Sandbox plays run at P1: every action step is held at the gate for a human.</p>
+      <p class="p1-tag">Autonomy is earned, not assumed.</p>
+    </div>
+  </aside>
 
-  <hr>
-  <h2>Plays: the operation at work</h2>
-  <p class="staged"><strong>Staged demo world.</strong> The properties, turnovers,
-     cleaners, and arrivals below are fixture data — no real guest data anywhere.
-     Every send in a play is <strong>simulated or held for approval</strong>:
-     nothing real is sent and nothing real is charged. Action steps show the
-     gate the autonomy ladder applies before anything may execute.</p>
+  <main class="main">
+    <header class="masthead">
+      <h1 class="display">Comfi Autopilot</h1>
+      <p>An autonomous operations system for short-term rentals, designed to
+         connect to Hospitable; this build runs on a staged fixture world (no live
+         Hospitable or Turno connection). Start with the first step of the operation: paste a guest
+         message. Triage returns a category, a confidence, a draft in the
+         operator's voice, a route, and a reason, plus the send right that category
+         has earned so far. The urgency decision is made by the triage layer in
+         this repo, a hackathon-built port of the operator's Jev pipeline (TypeSafe
+         AI) to Muse Spark/Wonder; Jev's original tool, the hand-labeled dataset,
+         and the Oct 7–14 pilot are pre-existing.</p>
+    </header>
 
-  <h3>Play: early check-in</h3>
-  <p>A guest asks to arrive early. Comfi Autopilot extracts the requested time, checks the
-     staged calendar (is there a same-day turnover? who cleans? when is the unit
-     actually ready?), drafts the reply, and gates the early check-in charge —
-     the highest-stakes action — for a human. When the answer depends on the
-     cleaner, the run waits, and the cleaner's report finishes the chain.</p>
-  <label>Property
-    <select id="ec-prop">
-      <option value="cedar-2a">Studio 2A, Cedar Hollow — turnover that day, ready 2:00 PM</option>
-      <option value="cedar-1a">Garden Unit 1A, Cedar Hollow — no turnover, ready 12:00 PM</option>
-      <option value="maple-house">Maple Street House — late turnover, ready 3:30 PM</option>
-    </select>
-  </label>
-  <label>Arrival date
-    <select id="ec-date"><option>2026-10-28</option></select>
-  </label>
-  <textarea id="ec-msg" rows="3">Hi! Our flight lands early — could we check in at 1pm instead of 4? Happy to pay an early check-in fee if that helps.</textarea>
-  <br><button class="bigbtn" id="ec-run">Run the early check-in play</button>
-  <div class="timeline" id="ec-timeline"></div>
-  <p id="ec-eventrow" style="display:none">
-    <button class="bigbtn" id="ec-done">Cleaner reports done (1:32 PM)</button>
-    <span class="fine">Delivers the <code>cleaner_done</code> event to the waiting run.</span>
-  </p>
+    <section id="triage" class="console" aria-label="Triage">
+      <div class="panel inbox">
+        <div class="inbox-head"><h2 class="display">Inbox</h2><span class="count">4</span></div>
+        <span class="cap">Staged examples</span>
+        <div class="rows">
+          <button class="chip" data-msg="Hi, we just got back and the door code is not working. We are standing outside with our bags.">Try: lockout</button>
+          <button class="chip" data-msg="Would it be possible to check out at 1pm instead of 11? Our flight home is late afternoon.">Try: late checkout</button>
+          <button class="chip" data-msg="Just confirming we received the receipt for the cleaning fee. All set on our end, thanks.">Try: receipt FYI</button>
+          <button class="chip" data-msg="The guests upstairs have played loud music past midnight two nights in a row and we can barely sleep.">Try: noise complaint</button>
+        </div>
+      </div>
+      <div class="panel detail">
+        <label>Property
+          <select id="prop">
+            <option>Cedar Hollow Garden Unit 1A</option><option>Cedar Hollow Garden Unit 1B</option>
+            <option>Cedar Hollow Studio 2A</option><option>Cedar Hollow Upper Unit 2B</option>
+            <option>Ridgeview condo</option><option>Maple Street House</option>
+          </select>
+        </label>
+        <label for="msg">Guest message</label>
+        <textarea id="msg" rows="6" placeholder="Paste a guest message here"></textarea>
+        <div class="det-actions"><button id="go">Triage</button></div>
+        <div id="card">
+          <div class="decision">
+            <h2 id="cat"></h2>
+            <div class="decision-conf">
+              <p id="conf"></p>
+              <div class="bar"><div class="fill" id="confbar"></div></div>
+            </div>
+          </div>
+          <p class="draftp"><strong>Draft:</strong> <span id="draft"></span></p>
+          <div class="specrows">
+            <p><strong>Route:</strong> <span id="route"></span></p>
+            <p><strong>Why:</strong> <span id="reason"></span></p>
+          </div>
+          <p class="fine" id="meta"></p>
+        </div>
+      </div>
+    </section>
 
-  <h3>Play: cleaner done → guest ready</h3>
-  <p>No guest message at all: the cleaner finishing is the trigger. Comfi Autopilot verifies
-     the clean against the record, then the arriving guest hears the place is
-     ready. If the cleaner flagged a problem, the guest hears nothing and a
-     human takes over.</p>
-  <button class="bigbtn" id="cd-good">Cleaner finished — Studio 2A, guest arriving today</button>
-  <button class="bigbtn" id="cd-flag">Cleaner finished — Maple Street House (problem flagged)</button>
-  <div class="timeline" id="cd-timeline"></div>
+    <section id="plays" class="plays" aria-labelledby="h-plays">
+      <div class="sec-head"><h2 class="display" id="h-plays">Plays: the operation at work</h2></div>
+      <ol class="strip">
+        <li><a href="#triage"><span class="num">01</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v11H10l-4.5 3.5V16H4z"/></svg><span class="strip-title">Guest messages</span><span class="strip-text">Start with the first step of the operation: paste a guest message.</span></a></li>
+        <li><a href="#play-early"><span class="num">02</span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg><span class="strip-title">Early check-in</span><span class="strip-text">A guest asks to arrive early.</span></a></li>
+        <li><a href="#play-cleaner"><span class="num">03</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 11 12 4.5 20 11v9H4z"/><path d="M10 20v-5.5h4V20"/></svg><span class="strip-title">Cleaner done</span><span class="strip-text">No guest message at all: the cleaner finishing is the trigger.</span></a></li>
+        <li><a href="#play-instay"><span class="num">04</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3.8a4.7 4.7 0 0 0-4.4 6.3l-6.8 6.8 3.3 3.3 6.8-6.8a4.7 4.7 0 0 0 6.3-4.4l-2.9 2.9-2.9-.4-.4-2.9z"/></svg><span class="strip-title">In-stay issue</span><span class="strip-text">A guest who is already in the home reports something broken.</span></a></li>
+        <li><a href="#play-late"><span class="num">05</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 4H6v16h7"/><path d="M10.5 12H20m-3-3.2 3 3.2-3 3.2"/></svg><span class="strip-title">Late checkout</span><span class="strip-text">A departing guest asks to check out late.</span></a></li>
+        <li><a href="#cameras"><span class="num">06</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 8h4L9 5.5h6L16.5 8h4v11h-17z"/><circle cx="12" cy="13.5" r="3.5"/></svg><span class="strip-title">Cameras</span><span class="strip-text">An outside camera reports motion — no message from anyone.</span></a></li>
+      </ol>
+      <p class="staged"><strong>Staged demo world.</strong> The properties, turnovers,
+         cleaners, and arrivals below are fixture data — no real guest data anywhere.
+         Every send in a play is <strong>simulated or held for approval</strong>:
+         nothing real is sent and nothing real is charged. Action steps show the
+         gate the autonomy ladder applies before anything may execute.</p>
 
-  <h3>Play: camera check</h3>
-  <p>An outside camera reports motion — no message from anyone. Comfi Autopilot classifies
-     the staged frame, checks it against the staged calendar, and either logs it
-     (the guest who was expected, the cleaner who was scheduled, nothing of note)
-     or flags the <strong>operator</strong> (a crowd bigger than the booking, a
-     person nobody expected, a frame too dark to judge). The motion play never
-     messages a guest. Two Tier-1 extensions ride the same rails: a camera that
-     goes <strong>offline</strong> during a stay, on a switch the guest controls,
-     drafts the camera system's one guest message — held at the gate, in the
-     operator's chosen wording — and a house marked <strong>closed</strong> flips
-     the expectation, so any person flags the operator with the frame still
-     attached. A post-turnover check reads the door and lights state of the
-     emptied home. The final-list batch rides the same rails: a
-     <strong>covered or turned</strong> camera flags the operator whatever the
-     scene (urgent on a one-night weekend stay), a person stuck at a shut door
-     across two frames flags the operator with the door state, a
-     <strong>lockout report</strong> hands the operator the latest door frame,
-     a guest who <strong>feels unsafe</strong> gets the latest frames to the
-     operator urgently, and a <strong>sunset check</strong> reads the entry
-     lights before an arriving guest does. Batch 2 rides the same rails: a
-     <strong>dog arriving with the party</strong> when the booking lists no
-     pet flags the operator with the still (nothing is charged; the call is
-     the operator's), a <strong>morning check</strong> reads the snow at an
-     empty home, cameras <strong>dropping together</strong> across
-     properties collapse into one area-outage notification, and a periodic
-     <strong>upkeep check</strong> turns the fleet's own history into
-     turnover notes (check the WiFi, wipe the lens). Batch 3 rides the same
-     rails: a <strong>gathering</strong> no longer fires on one frame — the
-     people estimates accumulate across the stay, and the operator hears only
-     when a sustained floor clears the booked party by a wide margin, worded
-     as &ldquo;at least N people (model estimate)&rdquo;; a vendor's stated
-     arrival window gets <strong>proof of service</strong> — a worker on
-     camera inside the window is logged with the frame, and a window that
-     closes with nobody seen goes to the operator, presence only and never a
-     word about the work; and boxes carried in on three distinct days of one
-     stay raise one awareness-only note: <strong>signs consistent with a
-     possible move-in</strong>. The frames are staged metadata, not real
-     photos.</p>
-  <button class="bigbtn" id="cc-guest">Camera motion — guest arriving, Studio 2A</button>
-  <button class="bigbtn" id="cc-gathering">Camera motion — one crowded frame, Garden Unit 1A (logs: one frame never fires)</button>
-  <button class="bigbtn" id="cc-gathering-sustained">Camera motion — gathering sustained across three frames, Garden Unit 1A</button>
-  <button class="bigbtn" id="cc-offline">Camera offline — switch flipped during a stay, Garden Unit 1A</button>
-  <button class="bigbtn" id="cc-vacant">Camera motion — person at the closed house, Maple Street House</button>
-  <button class="bigbtn" id="cc-state-open">Post-turnover check — door open, Studio 2A</button>
-  <button class="bigbtn" id="cc-state-ok">Post-turnover check — all secured, Studio 2A</button>
-  <button class="bigbtn" id="cc-covered">Camera covered — one-night weekend stay, Garden Unit 1A</button>
-  <button class="bigbtn" id="cc-lockout">Guest lockout — person at the shut door, Studio 2A</button>
-  <button class="bigbtn" id="cc-unsafe">Guest feels unsafe — latest frames to the operator, Studio 2A</button>
-  <button class="bigbtn" id="cc-dark">Sunset check — entry dark, second night running, Studio 2A</button>
-  <button class="bigbtn" id="cc-dog">Camera motion — dog arriving with the party, no pet booked, Maple Street House</button>
-  <button class="bigbtn" id="cc-snow">Morning check — snow still down at an empty home, Maple Street House</button>
-  <button class="bigbtn" id="cc-outage">Area outage — three cameras drop at once, Cedar Hollow</button>
-  <button class="bigbtn" id="cc-upkeep">Camera upkeep — fleet self-check (WiFi pattern, dirty lenses)</button>
-  <button class="bigbtn" id="cc-vendor-seen">Vendor proof of service — worker on camera inside the stated window, Maple Street House</button>
-  <button class="bigbtn" id="cc-vendor-missing">Vendor proof of service — window closed, no vendor seen, Garden Unit 1A</button>
-  <button class="bigbtn" id="cc-movein">Camera motion — boxes carried in on a third day, Studio 2A (possible move-in signs)</button>
-  <div class="timeline" id="cc-timeline"></div>
+      <article class="play panel" id="play-early" aria-labelledby="h-early">
+        <div class="play-head"><span class="num" aria-hidden="true">02</span><h3 id="h-early">Play: early check-in</h3></div>
+        <div class="play-grid">
+          <div class="play-ctl">
+            <p>A guest asks to arrive early. Comfi Autopilot extracts the requested time, checks the
+               staged calendar (is there a same-day turnover? who cleans? when is the unit
+               actually ready?), drafts the reply, and gates the early check-in charge —
+               the highest-stakes action — for a human. When the answer depends on the
+               cleaner, the run waits, and the cleaner's report finishes the chain.</p>
+            <div class="fields">
+            <label>Property
+              <select id="ec-prop">
+                <option value="cedar-2a">Studio 2A, Cedar Hollow — turnover that day, ready 2:00 PM</option>
+                <option value="cedar-1a">Garden Unit 1A, Cedar Hollow — no turnover, ready 12:00 PM</option>
+                <option value="maple-house">Maple Street House — late turnover, ready 3:30 PM</option>
+              </select>
+            </label>
+            <label>Arrival date
+              <select id="ec-date"><option>2026-10-28</option></select>
+            </label>
+            </div>
+            <label for="ec-msg">Guest message</label>
+            <textarea id="ec-msg" rows="3">Hi! Our flight lands early — could we check in at 1pm instead of 4? Happy to pay an early check-in fee if that helps.</textarea>
+            <div><button class="bigbtn" id="ec-run">Run the early check-in play</button></div>
+          </div>
+          <div class="play-out">
+            <span class="cap">Run timeline</span>
+            <div class="timeline" id="ec-timeline"></div>
+            <p id="ec-eventrow" style="display:none">
+              <button class="bigbtn" id="ec-done">Cleaner reports done (1:32 PM)</button>
+              <span class="fine">Delivers the <code>cleaner_done</code> event to the waiting run.</span>
+            </p>
+          </div>
+        </div>
+      </article>
 
-  <h3>Play: in-stay issue → handyman dispatch</h3>
-  <p>A guest who is already in the home reports something broken. Comfi Autopilot identifies
-     the issue from the message, checks who is actually staying, drafts the reply in the
-     operator's voice, and composes the handyman dispatch — the dispatch send is gated in
-     the middle of the ladder. A safety issue (gas, smoke, flooding, no heat) skips the
-     fix-it advice entirely, gives the guest safety guidance, and flags the
-     <strong>operator</strong> in the same run. When the vendor sends an ETA, and later
-     reports the work done, the guest hears about each step — every send gated.
-     The vendor and his rates are fixtures; the dispatch is simulated or held.</p>
-  <button class="bigbtn" id="ih-leak">Guest reports a leak — Garden Unit 1A, mid-stay</button>
-  <button class="bigbtn" id="ih-gas">Guest smells gas — Garden Unit 1A, mid-stay (safety)</button>
-  <div class="timeline" id="ih-timeline"></div>
-  <p id="ih-eventrow" style="display:none">
-    <button class="bigbtn" id="ih-eta">Vendor update: arriving 3:30 PM</button>
-    <button class="bigbtn" id="ih-done">Vendor reports done</button>
-    <span class="fine">Delivers the <code>vendor_eta</code> / <code>vendor_done</code> events to the waiting run.</span>
-  </p>
+      <article class="play panel" id="play-cleaner" aria-labelledby="h-cleaner">
+        <div class="play-head"><span class="num" aria-hidden="true">03</span><h3 id="h-cleaner">Play: cleaner done → guest ready</h3></div>
+        <div class="play-grid">
+          <div class="play-ctl">
+            <p>No guest message at all: the cleaner finishing is the trigger. Comfi Autopilot verifies
+               the clean against the record, then the arriving guest hears the place is
+               ready. If the cleaner flagged a problem, the guest hears nothing and a
+               human takes over.</p>
+            <div class="scenarios">
+            <button class="bigbtn" id="cd-good">Cleaner finished — Studio 2A, guest arriving today</button>
+            <button class="bigbtn" id="cd-flag">Cleaner finished — Maple Street House (problem flagged)</button>
+            </div>
+          </div>
+          <div class="play-out">
+            <span class="cap">Run timeline</span>
+            <div class="timeline" id="cd-timeline"></div>
+          </div>
+        </div>
+      </article>
 
-  <h3>Play: special request → late checkout</h3>
-  <p>A departing guest asks to check out late. Comfi Autopilot reads the staged calendar for
-     that property and day — is a new guest arriving after them, how long is the turnover
-     in between, what does the house allow — and drafts the answer in the operator's voice:
-     yes for the time asked, a no that offers the latest time that does work when the ask
-     runs into the next guest's turnover, or a question back when no time was given. The
-     first hour past checkout is free; past that, the late checkout fee is its own step at
-     the highest-stakes gate, held for a human, and only for a time the guest actually
-     asked for. Same message, same day, two calendars below. Nothing is sent and nothing
-     is charged.</p>
-  <button class="bigbtn" id="lc-clear">Late checkout at 1 PM — Garden Unit 1A, nobody arriving that day</button>
-  <button class="bigbtn" id="lc-arrival">Late checkout at 1 PM — Maple Street House, new guests arriving that day</button>
-  <div class="timeline" id="lc-timeline"></div>
+      <article class="play panel" id="play-instay" aria-labelledby="h-instay">
+        <div class="play-head"><span class="num" aria-hidden="true">04</span><h3 id="h-instay">Play: in-stay issue → handyman dispatch</h3></div>
+        <div class="play-grid">
+          <div class="play-ctl">
+            <p>A guest who is already in the home reports something broken. Comfi Autopilot identifies
+               the issue from the message, checks who is actually staying, drafts the reply in the
+               operator's voice, and composes the handyman dispatch — the dispatch send is gated in
+               the middle of the ladder. A safety issue (gas, smoke, flooding, no heat) skips the
+               fix-it advice entirely, gives the guest safety guidance, and flags the
+               <strong>operator</strong> in the same run. When the vendor sends an ETA, and later
+               reports the work done, the guest hears about each step — every send gated.
+               The vendor and his rates are fixtures; the dispatch is simulated or held.</p>
+            <div class="scenarios">
+            <button class="bigbtn" id="ih-leak">Guest reports a leak — Garden Unit 1A, mid-stay</button>
+            <button class="bigbtn" id="ih-gas">Guest smells gas — Garden Unit 1A, mid-stay (safety)</button>
+            </div>
+          </div>
+          <div class="play-out">
+            <span class="cap">Run timeline</span>
+            <div class="timeline" id="ih-timeline"></div>
+            <p id="ih-eventrow" style="display:none">
+              <button class="bigbtn" id="ih-eta">Vendor update: arriving 3:30 PM</button>
+              <button class="bigbtn" id="ih-done">Vendor reports done</button>
+              <span class="fine">Delivers the <code>vendor_eta</code> / <code>vendor_done</code> events to the waiting run.</span>
+            </p>
+          </div>
+        </div>
+      </article>
 
-  <p class="fine">Disclosure: pre-existing — Jev, the decision model by TypeSafe AI
-     used inside Comfi Autopilot, the operator's hand-labeled dataset, and the
-     Oct 7–14 pilot. Everything else on this page — the Comfi Autopilot layer —
-     was built during the hackathon, Oct 26 to Nov 4, 2026.</p>
+      <article class="play panel" id="play-late" aria-labelledby="h-late">
+        <div class="play-head"><span class="num" aria-hidden="true">05</span><h3 id="h-late">Play: special request → late checkout</h3></div>
+        <div class="play-grid">
+          <div class="play-ctl">
+            <p>A departing guest asks to check out late. Comfi Autopilot reads the staged calendar for
+               that property and day — is a new guest arriving after them, how long is the turnover
+               in between, what does the house allow — and drafts the answer in the operator's voice:
+               yes for the time asked, a no that offers the latest time that does work when the ask
+               runs into the next guest's turnover, or a question back when no time was given. The
+               first hour past checkout is free; past that, the late checkout fee is its own step at
+               the highest-stakes gate, held for a human, and only for a time the guest actually
+               asked for. Same message, same day, two calendars below. Nothing is sent and nothing
+               is charged.</p>
+            <div class="scenarios">
+            <button class="bigbtn" id="lc-clear">Late checkout at 1 PM — Garden Unit 1A, nobody arriving that day</button>
+            <button class="bigbtn" id="lc-arrival">Late checkout at 1 PM — Maple Street House, new guests arriving that day</button>
+            </div>
+          </div>
+          <div class="play-out">
+            <span class="cap">Run timeline</span>
+            <div class="timeline" id="lc-timeline"></div>
+          </div>
+        </div>
+      </article>
+    </section>
+
+    <section id="cameras" class="play panel" aria-labelledby="h-cam">
+      <div class="play-head"><span class="num" aria-hidden="true">06</span><h3 id="h-cam">Play: camera check</h3></div>
+      <div class="cam-desc">
+      <p>An outside camera reports motion — no message from anyone. Comfi Autopilot classifies
+         the staged frame, checks it against the staged calendar, and either logs it
+         (the guest who was expected, the cleaner who was scheduled, nothing of note)
+         or flags the <strong>operator</strong> (a crowd bigger than the booking, a
+         person nobody expected, a frame too dark to judge). The motion play never
+         messages a guest. Two Tier-1 extensions ride the same rails: a camera that
+         goes <strong>offline</strong> during a stay, on a switch the guest controls,
+         drafts the camera system's one guest message — held at the gate, in the
+         operator's chosen wording — and a house marked <strong>closed</strong> flips
+         the expectation, so any person flags the operator with the frame still
+         attached. A post-turnover check reads the door and lights state of the
+         emptied home. The final-list batch rides the same rails: a
+         <strong>covered or turned</strong> camera flags the operator whatever the
+         scene (urgent on a one-night weekend stay), a person stuck at a shut door
+         across two frames flags the operator with the door state, a
+         <strong>lockout report</strong> hands the operator the latest door frame,
+         a guest who <strong>feels unsafe</strong> gets the latest frames to the
+         operator urgently, and a <strong>sunset check</strong> reads the entry
+         lights before an arriving guest does. Batch 2 rides the same rails: a
+         <strong>dog arriving with the party</strong> when the booking lists no
+         pet flags the operator with the still (nothing is charged; the call is
+         the operator's), a <strong>morning check</strong> reads the snow at an
+         empty home, cameras <strong>dropping together</strong> across
+         properties collapse into one area-outage notification, and a periodic
+         <strong>upkeep check</strong> turns the fleet's own history into
+         turnover notes (check the WiFi, wipe the lens). Batch 3 rides the same
+         rails: a <strong>gathering</strong> no longer fires on one frame — the
+         people estimates accumulate across the stay, and the operator hears only
+         when a sustained floor clears the booked party by a wide margin, worded
+         as &ldquo;at least N people (model estimate)&rdquo;; a vendor's stated
+         arrival window gets <strong>proof of service</strong> — a worker on
+         camera inside the window is logged with the frame, and a window that
+         closes with nobody seen goes to the operator, presence only and never a
+         word about the work; and boxes carried in on three distinct days of one
+         stay raise one awareness-only note: <strong>signs consistent with a
+         possible move-in</strong>. The frames are staged metadata, not real
+         photos.</p>
+      </div>
+      <div class="cam-grid">
+        <div class="cam-cards scenarios">
+        <button class="bigbtn" id="cc-guest">Camera motion — guest arriving, Studio 2A</button>
+        <button class="bigbtn" id="cc-gathering">Camera motion — one crowded frame, Garden Unit 1A (logs: one frame never fires)</button>
+        <button class="bigbtn" id="cc-gathering-sustained">Camera motion — gathering sustained across three frames, Garden Unit 1A</button>
+        <button class="bigbtn" id="cc-offline">Camera offline — switch flipped during a stay, Garden Unit 1A</button>
+        <button class="bigbtn" id="cc-vacant">Camera motion — person at the closed house, Maple Street House</button>
+        <button class="bigbtn" id="cc-state-open">Post-turnover check — door open, Studio 2A</button>
+        <button class="bigbtn" id="cc-state-ok">Post-turnover check — all secured, Studio 2A</button>
+        <button class="bigbtn" id="cc-covered">Camera covered — one-night weekend stay, Garden Unit 1A</button>
+        <button class="bigbtn" id="cc-lockout">Guest lockout — person at the shut door, Studio 2A</button>
+        <button class="bigbtn" id="cc-unsafe">Guest feels unsafe — latest frames to the operator, Studio 2A</button>
+        <button class="bigbtn" id="cc-dark">Sunset check — entry dark, second night running, Studio 2A</button>
+        <button class="bigbtn" id="cc-dog">Camera motion — dog arriving with the party, no pet booked, Maple Street House</button>
+        <button class="bigbtn" id="cc-snow">Morning check — snow still down at an empty home, Maple Street House</button>
+        <button class="bigbtn" id="cc-outage">Area outage — three cameras drop at once, Cedar Hollow</button>
+        <button class="bigbtn" id="cc-upkeep">Camera upkeep — fleet self-check (WiFi pattern, dirty lenses)</button>
+        <button class="bigbtn" id="cc-vendor-seen">Vendor proof of service — worker on camera inside the stated window, Maple Street House</button>
+        <button class="bigbtn" id="cc-vendor-missing">Vendor proof of service — window closed, no vendor seen, Garden Unit 1A</button>
+        <button class="bigbtn" id="cc-movein">Camera motion — boxes carried in on a third day, Studio 2A (possible move-in signs)</button>
+        </div>
+        <div class="play-out cam-out">
+          <span class="cap">Run timeline</span>
+          <div class="timeline" id="cc-timeline"></div>
+        </div>
+      </div>
+    </section>
+
+    <footer class="foot">
+      <p class="fine">Disclosure: pre-existing — Jev, the decision model by TypeSafe AI
+         used inside Comfi Autopilot, the operator's hand-labeled dataset, and the
+         Oct 7–14 pilot. Everything else on this page — the Comfi Autopilot layer —
+         was built during the hackathon, Oct 26 to Nov 4, 2026.</p>
+    </footer>
+  </main>
+</div>
   <script>
     document.querySelectorAll('.chip').forEach(b => b.onclick = () => {
       document.getElementById('msg').value = b.dataset.msg; });
@@ -543,6 +927,98 @@
     };
     document.getElementById('lc-clear').onclick = lcFire('cedar-1a');
     document.getElementById('lc-arrival').onclick = lcFire('maple-house');
+  </script>
+  <script>
+    // ---- presentation only: no requests, no change to the wiring above --
+    (() => {
+      const $ = id => document.getElementById(id);
+      const span = (cls, text) => {
+        const s = document.createElement('span'); s.className = cls;
+        if (text != null) s.textContent = text;
+        return s;
+      };
+      const TONES = { Act: 'act', Confirm: 'confirm', Ignore: 'ignore' };
+      const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      // Inbox rows: each staged example shows its title, the message, and a
+      // badge slot that only fills from a real /triage result.
+      const rows = [...document.querySelectorAll('.chip')];
+      rows.forEach(b => {
+        const title = b.textContent.trim();
+        const main = span('row-main'), side = span('row-side');
+        main.append(span('row-title', title), span('row-text', b.dataset.msg));
+        const empty = span('badge t-none', '—'); empty.title = 'Not triaged yet';
+        side.append(empty, span('row-conf', ''));
+        b.textContent = '';
+        b.append(main, side);
+      });
+      const msg = $('msg');
+      const markSelected = () => rows.forEach(b => {
+        const on = b.dataset.msg === msg.value;
+        b.classList.toggle('is-selected', on);
+        b.setAttribute('aria-pressed', String(on));
+      });
+      rows.forEach(b => b.addEventListener('click', markSelected));
+      msg.addEventListener('input', markSelected);
+      markSelected();
+
+      // When a triage result lands (#meta is written last), tone the decision
+      // panel, split the confidence for display, and post the result on the
+      // row that was triaged. Visible text stays exactly what the handler wrote.
+      let triaged = '';
+      $('go').addEventListener('click', () => { triaged = msg.value; });
+      new MutationObserver(() => {
+        const cat = $('cat'), conf = $('conf'), text = cat.textContent;
+        const word = text.split(' ')[0], tone = TONES[word] || '';
+        $('card').dataset.tone = tone;
+        cat.textContent = '';
+        cat.append(span('cat-word', word));
+        if (text.length > word.length) cat.append(span('cat-note', text.slice(word.length)));
+        const m = conf.textContent.match(/^(Confidence )(.*)$/);
+        if (m) { conf.textContent = ''; conf.append(span('conf-cap', m[1]), span('conf-num', m[2])); }
+        const row = rows.find(b => b.dataset.msg === triaged);
+        if (row && tone) {
+          const badge = row.querySelector('.badge');
+          badge.className = 'badge t-' + tone; badge.textContent = word; badge.title = '';
+          row.querySelector('.row-conf').textContent = m ? m[2] : '';
+        }
+      }).observe($('meta'), { childList: true });
+
+      // Camera scenario cards: the label before the dash becomes the kicker.
+      document.querySelectorAll('#cameras .bigbtn').forEach(b => {
+        const t = b.textContent, i = t.indexOf(' — ');
+        if (i < 0) return;
+        b.textContent = '';
+        b.append(span('cam-k', t.slice(0, i)), span('cam-sep', ' — '), span('cam-d', t.slice(i + 3)));
+      });
+
+      // The scenario last run in each play stays pressed in.
+      document.querySelectorAll('.scenarios').forEach(group =>
+        group.addEventListener('click', e => {
+          const b = e.target.closest('button');
+          if (b) group.querySelectorAll('button').forEach(x => x.classList.toggle('is-on', x === b));
+        }));
+
+      // Rail: mark the section in view.
+      const links = [...document.querySelectorAll('.railnav a')];
+      const sections = links.map(a => document.querySelector(a.getAttribute('href')));
+      const markSection = () => {
+        let cur = 0;
+        sections.forEach((s, i) => { if (s.getBoundingClientRect().top <= 140) cur = i; });
+        links.forEach((a, i) => i === cur ? a.setAttribute('aria-current', 'true') : a.removeAttribute('aria-current'));
+      };
+      addEventListener('scroll', markSection, { passive: true });
+      markSection();
+
+      // Single-column layouts: bring a fresh run into view when it renders off screen.
+      const singleColumn = matchMedia('(max-width: 1279px)');
+      document.querySelectorAll('.timeline').forEach(t => new MutationObserver(() => {
+        if (!singleColumn.matches || !t.firstChild) return;
+        const r = t.getBoundingClientRect();
+        if (r.top > innerHeight * 0.8 || r.bottom < 0)
+          t.scrollIntoView({ block: 'start', behavior: reduceMotion ? 'auto' : 'smooth' });
+      }).observe(t, { childList: true }));
+    })();
   </script>
 </body>
 </html>
