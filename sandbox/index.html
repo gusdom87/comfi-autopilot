@@ -184,6 +184,20 @@
     <span class="fine">Delivers the <code>vendor_eta</code> / <code>vendor_done</code> events to the waiting run.</span>
   </p>
 
+  <h3>Play: special request → late checkout</h3>
+  <p>A departing guest asks to check out late. Comfi Autopilot reads the staged calendar for
+     that property and day — is a new guest arriving after them, how long is the turnover
+     in between, what does the house allow — and drafts the answer in the operator's voice:
+     yes for the time asked, a no that offers the latest time that does work when the ask
+     runs into the next guest's turnover, or a question back when no time was given. The
+     first hour past checkout is free; past that, the late checkout fee is its own step at
+     the highest-stakes gate, held for a human, and only for a time the guest actually
+     asked for. Same message, same day, two calendars below. Nothing is sent and nothing
+     is charged.</p>
+  <button class="bigbtn" id="lc-clear">Late checkout at 1 PM — Garden Unit 1A, nobody arriving that day</button>
+  <button class="bigbtn" id="lc-arrival">Late checkout at 1 PM — Maple Street House, new guests arriving that day</button>
+  <div class="timeline" id="lc-timeline"></div>
+
   <p class="fine">Disclosure: pre-existing — Jev, the decision model by TypeSafe AI
      used inside Comfi Autopilot, the operator's hand-labeled dataset, and the
      Oct 7–14 pilot. Everything else on this page — the Comfi Autopilot layer —
@@ -218,13 +232,22 @@
     function stepResult(s) {
       const r = s.result || {}; let out = '';
       if (r.requested) out += '<div>Requested arrival: <strong>' + esc(r.requested) + '</strong></div>';
+      if (r.requested_checkout !== undefined) out += '<div>Requested checkout: <strong>' +
+        (r.requested_checkout ? esc(r.requested_checkout) : 'no time stated — the reply asks') + '</strong>' +
+        (r.standard_checkout ? ' · standard checkout ' + esc(r.standard_checkout) : '') + '</div>';
+      if (r.latest_checkout) out += '<div>Latest workable checkout: <strong>' + esc(r.latest_checkout) + '</strong>' +
+        (r.limit_note ? ' · ' + esc(r.limit_note) : '') +
+        (r.same_day_arrival ? ' · <span class="err">same-day arrival</span>' : ' · no same-day arrival') +
+        (r.fee_due ? ' · fee step drafted (past the free hour)' : ' · no fee step') + '</div>';
       if (r.outcome) out += '<div>Outcome: <strong>' + esc(r.outcome) + '</strong>' +
         (r.ready_at ? ' · unit ready at ' + esc(r.ready_at) : '') +
         (r.same_day_turnover ? ' · same-day turnover' : ' · no same-day turnover') +
         (r.cleaner ? ' · cleaner: ' + esc(r.cleaner) : '') + '</div>';
       if (r.draft) out += '<div class="draft">&ldquo;' + esc(r.draft) + '&rdquo;</div>';
-      if (r.charge) out += '<div>Charge: <strong>$' + r.charge.amount_usd + '</strong> — ' +
-        esc(r.charge.description) + ' (' + esc(r.charge.property_id) + ', ' + esc(r.charge.date) + ')</div>';
+      if (r.charge) out += '<div>Charge: ' + (r.charge.amount_usd != null
+        ? '<strong>$' + r.charge.amount_usd + '</strong> — ' + esc(r.charge.description)
+        : '<strong>' + esc(r.charge.description) + '</strong>') +
+        ' (' + esc(r.charge.property_id) + ', ' + esc(r.charge.date) + ')</div>';
       if (r.guest) out += '<div>Guest: ' + esc(r.guest) + '</div>';
       if (r.clean_status) out += '<div>Clean on record: <strong>' + esc(r.clean_status) + '</strong>' +
         (r.finished_at ? ' · finished ' + esc(r.finished_at) : '') +
@@ -509,6 +532,17 @@
     };
     document.getElementById('ih-eta').onclick = ihEvent('vendor_eta', { eta: '3:30 PM' });
     document.getElementById('ih-done').onclick = ihEvent('vendor_done', { finished_at: '4:05 PM' });
+
+    // Late checkout: the same guest message on the same departure day,
+    // against a clear calendar and a same-day-arrival calendar.
+    const LC_MSG = 'Would it be possible to check out at 1pm instead of 11? Our flight home is late afternoon.';
+    const lcFire = property_id => async () => {
+      const run = await post('/play', { play: 'late_checkout', message: LC_MSG,
+        property_id, date: '2026-11-08' });
+      renderRun(run, document.getElementById('lc-timeline'));
+    };
+    document.getElementById('lc-clear').onclick = lcFire('cedar-1a');
+    document.getElementById('lc-arrival').onclick = lcFire('maple-house');
   </script>
 </body>
 </html>

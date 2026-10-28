@@ -43,6 +43,13 @@ class PropertyInfo:
     typical_clean_minutes: int = 120
     buffer_minutes: int = 30               # settle time after a clean
     default_ready: str = "12:00"           # ready time on no-turnover days
+    # Checkout timing for the late-checkout play (Play 5).
+    # standard_checkout is the house's normal checkout. latest_checkout
+    # is a staged house rule: the latest checkout the property offers on
+    # any day. It is a limit, not a collision - an ask past it on an
+    # otherwise clear day is answered with this time instead.
+    standard_checkout: str = "11:00"       # "HH:MM", 24h
+    latest_checkout: str = "14:00"         # "HH:MM", 24h
     # Check-in essentials, guest-facing. Fixture wording only: these are
     # staged instruction lines, never a real door code.
     door_note: str = ""
@@ -461,6 +468,18 @@ def default_fixture_data() -> dict:
     gathering accumulation (#6) and the vendor proof check (#23)
     reuse Alex's stay and Maple Street House's closed date with its
     service window; they need frames, not new calendar records.
+    Play 5 (late checkout) adds one departure day, 2026-11-08, with
+    the same ask landing on two different calendars:
+      cedar-1a    Riley departs, nobody arrives -> clear day, a 1 PM
+                  checkout is a yes (fee step held)
+      maple-house Casey departs and Morgan arrives the same day; the
+                  180-minute turnover plus the 30-minute buffer has to
+                  fit before Morgan's 4 PM check-in, so 12:30 PM is the
+                  latest checkout -> a 1 PM ask is a no that offers
+                  12:30 PM
+    Each departing stay is keyed on its departure date (the guest is
+    still in residence that morning), on a date no earlier fixture
+    uses, so no camera or check-in outcome changes meaning.
     """
     return {
         "properties": {
@@ -519,12 +538,17 @@ def default_fixture_data() -> dict:
             "maple-house|2026-10-28": {
                 "checkout_time": "12:30", "cleaner_id": "cleaner-tomas",
                 "cleaner_name": "Tomas", "duration_minutes": 150},
+            "maple-house|2026-11-08": {
+                "checkout_time": "11:00", "cleaner_id": "cleaner-tomas",
+                "cleaner_name": "Tomas", "duration_minutes": 180},
         },
         "arrivals": {
             "cedar-2a|2026-10-28": {"guest_name": "Dana"},
             "maple-house|2026-10-28": {"guest_name": "Marcus"},
             "cedar-2a|2026-11-02": {"guest_name": "Jordan",
                                     "guest_count": 1},
+            "maple-house|2026-11-08": {"guest_name": "Morgan",
+                                       "guest_count": 4},
         },
         "stays": {
             "cedar-1a|2026-10-29": {
@@ -547,6 +571,14 @@ def default_fixture_data() -> dict:
                 "guest_name": "Jordan", "guest_count": 1,
                 "arrival_date": "2026-11-02",
                 "departure_date": "2026-11-28"},
+            "cedar-1a|2026-11-08": {
+                "guest_name": "Riley", "guest_count": 2,
+                "arrival_date": "2026-11-05",
+                "departure_date": "2026-11-08"},
+            "maple-house|2026-11-08": {
+                "guest_name": "Casey", "guest_count": 3,
+                "arrival_date": "2026-11-03",
+                "departure_date": "2026-11-08"},
         },
         "clean_reports": {
             "cedar-2a|2026-10-28": {

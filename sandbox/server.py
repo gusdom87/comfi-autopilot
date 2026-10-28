@@ -57,9 +57,11 @@ RUNS: dict = {}
 
 
 def handle_play(payload: dict, engine=ENGINE, runs=None) -> dict:
-    """Start a play run. early_checkin starts from a scenario message +
-    property + date; cleaner_done starts by delivering its event
-    (the cleaner's finish is the trigger). Returns the run's dict."""
+    """Start a play run. The message-started plays (early_checkin,
+    in_stay_issue, late_checkout) start from a scenario message +
+    property + date through the generic path at the bottom;
+    cleaner_done starts by delivering its event (the cleaner's finish
+    is the trigger). Returns the run's dict."""
     runs = RUNS if runs is None else runs
     play_name = str(payload.get("play", "")).strip()
     if play_name == "camera_check":

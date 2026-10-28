@@ -50,6 +50,10 @@ Endpoints:
                check-in; the play extracts the issue itself):
                {"play": "in_stay_issue", "message": "...",
                 "property_id": "cedar-1a", "date": "2026-10-29"}
+               Body for late checkout (a guest message; date is the
+               DEPARTURE day, and the play extracts the time itself):
+               {"play": "late_checkout", "message": "...",
+                "property_id": "cedar-1a", "date": "2026-11-08"}
                Body for camera offline (the switch play; mention is
                the wording variant, lights_and_camera | lights_only):
                {"play": "camera_offline", "property_id": "cedar-1a",
@@ -306,3 +310,28 @@ Driving it on the page:
   instead of self-help, and the operator notification is produced
   and held in the same run. Ending the chain with the done event
   alone (no ETA first) also works — the ETA steps skip.
+- Late checkout (Play 5, the late-checkout variant of special
+  requests): both buttons send the same guest message ("check out at
+  1pm instead of 11?") for the same departure day, 2026-11-08,
+  against two calendars. "Garden Unit 1A, nobody arriving" is a clear
+  day: Riley departs, nobody arrives, so 1 PM is a yes, and because
+  1 PM is past the free first hour the late checkout fee is its own
+  step, HELD at the highest-stakes charge_guest gate next to the held
+  guest reply. The fee amount is the operator's to set: with
+  JEV_LATE_CHECKOUT_FEE_USD unset (the default), the reply and the
+  fee step say "amount to be set" and carry no dollar figure; with it
+  set, that amount is quoted on the held step. "Maple Street House,
+  new guests arriving" is a same-day turnover: Casey departs, Morgan
+  checks in at 4 PM, and
+  the 180-minute turnover plus the 30-minute buffer has to fit
+  first, so 12:30 PM is the latest workable checkout. The drafted
+  reply is a no to 1 PM that offers 12:30 PM, and no charge step is
+  drafted for a time the guest has not accepted. Via the API, the
+  same play also covers: a request with no time stated (a clarifying
+  question back, carrying the latest workable time and the fee
+  line), an ask past the house's latest-checkout rule on a clear day
+  (a yes to the latest time instead), an ask that fits inside the
+  free hour (no fee step), a grant that moves a same-day turnover's
+  start (a cleaner heads-up, held at message_cleaner, without the
+  cleaner's name in it), and an unknown property or no stay
+  departing that day (held for a human, nothing drafted).
