@@ -90,6 +90,15 @@
   .wordmark { padding: 0 10px; font: 800 24px/1 var(--font-display); letter-spacing: -.02em; white-space: nowrap; }
   .wordmark .dot { display: inline-block; width: .24em; height: .24em; margin-left: .05em;
                    border-radius: var(--r-round); background: var(--amber); }
+  /* wordmark lockup: dotless i stems with amber tittles (Gus, Oct 28) */
+  .wm { white-space: nowrap; }
+  .wm .wm-i { position: relative; }
+  .wm .tittle { position: absolute; left: 50%; transform: translateX(-50%); bottom: .74em;
+                width: .23em; height: .23em; border-radius: var(--r-round); background: var(--amber); }
+  .wm .dot { display: inline-block; width: .24em; height: .24em; margin-left: .05em;
+             border-radius: var(--r-round); background: var(--amber); }
+  .masthead-mark { font-family: var(--font-display); font-weight: 800; line-height: 1;
+                   letter-spacing: -.02em; color: var(--ink); }
   .railnav { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
   .railnav a { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: var(--r-sm);
                color: var(--cream); text-decoration: none; opacity: .8;
@@ -104,7 +113,7 @@
              letter-spacing: -.01em; text-transform: uppercase; }
   .p1 p { margin: 0 0 8px; font-size: var(--fs-small); line-height: 20px; opacity: .88; }
 
-  .masthead { display: grid; grid-template-columns: minmax(200px, 280px) minmax(0, 1fr); gap: 32px;
+  .masthead { display: grid; grid-template-columns: minmax(0, 340px) minmax(0, 1fr); gap: 32px;
               align-items: start; padding: 14px 6px 0; }
   .masthead h1 { font-size: var(--fs-h1); }
   .masthead p { max-width: 80ch; margin: 0; }
@@ -272,7 +281,10 @@
     .railnav { display: flex; gap: 2px; }
     .railnav a { padding: 9px 10px; font-size: 12px; }
     .railnav svg { display: none; }
-    .masthead { order: 2; }
+    .masthead { order: 2; grid-template-columns: minmax(0, 1fr); }
+    /* the top bar already carries the wordmark at this width; keep the h1 for semantics only */
+    .masthead-mark { position: absolute; width: 1px; height: 1px; overflow: hidden;
+                     clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; }
     .p1 { order: 3; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: baseline; gap: 4px 14px;
           margin: 0; padding: 14px 18px; border: 0; border-radius: var(--r-sm); background: var(--panel);
           color: var(--ink); box-shadow: inset 4px 0 0 var(--amber), var(--pressed-row); }
@@ -311,7 +323,7 @@
 <div class="shell">
   <aside class="rail">
     <div class="rail-top">
-      <div class="wordmark" role="img" aria-label="ComfiAutopilot">ComfiAutopilot<span class="dot"></span></div>
+      <div class="wordmark" role="img" aria-label="ComfiAutopilot"><span class="wm" aria-hidden="true">Comf<span class="wm-i">ı<span class="tittle"></span></span>Autop<span class="wm-i">ı<span class="tittle"></span></span>lot<span class="dot"></span></span></div>
       <nav aria-label="Page sections">
         <ul class="railnav">
           <li><a href="#triage" aria-current="true"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 13.5 6 5h12l2.5 8.5V19h-17z"/><path d="M3.5 13.5H9l1 2h4l1-2h5.5"/></svg>Triage</a></li>
@@ -330,7 +342,7 @@
 
   <main class="main">
     <header class="masthead">
-      <h1 class="display">Comfi Autopilot</h1>
+      <h1 class="masthead-mark" aria-label="Comfi Autopilot"><span class="wm" aria-hidden="true">Comf<span class="wm-i">ı<span class="tittle"></span></span>Autop<span class="wm-i">ı<span class="tittle"></span></span>lot<span class="dot"></span></span></h1>
       <p>An autonomous operations system for short-term rentals, designed to
          connect to Hospitable; this build runs on a staged fixture world (no live
          Hospitable or Turno connection). Start with the first step of the operation: paste a guest
