@@ -24,9 +24,10 @@ Resulting label spread: Confirm 33, Act 31, Ignore 25.
 Update Oct 27, 2026: the operator re-labeled all 18 held-out rows with his
 own Confirm / Act / Ignore calls. Those rows now carry ground truth from
 the regrade (marked human_verdict=relabeled in the dataset file), bringing
-the scored set to n=107: Confirm 39, Act 32, Ignore 36. The numbers in the
-README are from the 89-row set (n=83 scored); the 107-row set has not been
-re-run yet.
+the scored set to n=107: Confirm 39, Act 32, Ignore 36. The final eval ran
+on this 107-row set with the shipped prompt (n=101 scored, 6 few-shot
+examples excluded): overall accuracy 80.2%, decisive accuracy 82.3%,
+high-confidence accuracy 79.5%. The README numbers are from this run.
 
 Known limits: n=89 (now 107) is small; labels inherit the pilot's category definitions;
 message previews are truncated by the source system. Every reported number
