@@ -25,7 +25,7 @@ Jev is not this product. The urgency call on each message is made by the triage 
 
 Send rights are earned from the graded record, never assumed: at P1 every action needs a human's approval, at P2 a category that has proven itself may send with a log, and at P3 it sends with spot checks. Fail-safe everywhere: on any error, timeout, or unparsable output, the decision falls back to Confirm and a human decides.
 
-The graded record so far, from the eval harness in this repo (89-message eval set, 6 few-shot examples excluded from scoring, n=83 scored; configuration of record: Spark-to-Wonder escalation with the tuned2 prompt): overall accuracy 84.3%, decisive accuracy 81.8%, high-confidence accuracy 88.5%, Act recall 75.0%, Ignore accuracy 100%, and zero Confirm-to-Act errors. No category has yet met the ladder's P2 thresholds, so Comfi Autopilot correctly runs at P1, approve-first, today.
+The graded record so far, from the eval harness in this repo (full 107-message eval set, 6 few-shot examples excluded from scoring, n=101 scored; configuration of record: Spark-to-Wonder escalation with the shipped prompt): overall accuracy 80.2%, decisive accuracy 82.3% (n=62), high-confidence accuracy 79.5% (n=78), per-class accuracy Confirm 81.1%, Act 75.9%, Ignore 82.9%, 2 Confirm-to-Act errors, zero Ignore-to-Act errors, and 15 escalations, for a total cost of $1.67. Autonomy rights probed from this run's ledger keep Confirm, Act and Ignore all at approve-first: no category has yet met the ladder's P2 thresholds, so Comfi Autopilot correctly runs at P1, approve-first, today.
 
 ## Disclosure: pre-existing vs hackathon-built
 
