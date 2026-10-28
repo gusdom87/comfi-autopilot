@@ -85,6 +85,16 @@ Endpoints:
                the run carries no single property):
                {"play": "camera_upkeep", "date": "2026-10-28",
                 "kind": "camera_upkeep"}
+               Body for vendor proof of service (the vendor's stated
+               arrival window starts the run, which then waits for
+               the window to close — see POST /event below):
+               {"play": "camera_vendor_proof",
+                "property_id": "maple-house", "date": "2026-10-30",
+                "vendor": "Fixture Handyman",
+                "window_start": "10:00", "window_end": "12:00"}
+               The gathering accumulation and the move-in signs use
+               the camera_check body above, one POST per frame, in
+               order: the pattern lives across frames, not in one.
                Body for an offline burst (each event runs the
                ordinary camera_offline play; the correlation layer
                evaluates the burst and each formed cluster adds its
@@ -109,6 +119,12 @@ Endpoints:
                before its held step ever executes:
                {"run_id": "...", "event": "camera_online",
                 "payload": {"camera": "front-door"}}
+               A camera_vendor_proof run finishes when the window
+               closes (the payload may list the frames the camera
+               system captured; with none listed, the staged frame
+               store is read):
+               {"run_id": "...", "event": "vendor_window_closed",
+                "payload": {}}
   GET  /run/<id>   the run's current state (same JSON /play returns).
 
 Driving it on the page:
@@ -129,13 +145,25 @@ Driving it on the page:
 - Camera check: "Camera motion — guest arriving, Studio 2A" runs
   Play 7 with staged frame f1: the frame classifies as the expected
   guest (Dana arrives that day), the run logs it through the
-  auto_close gate, and nobody is notified. "Camera motion — large
-  gathering, Garden Unit 1A" uses frame f3: about eleven people on
-  the patio (a model estimate) against a booked party of four
-  mid-stay, so the run flags
-  the OPERATOR — the notification is held at the notify_operator
-  gate with its summary preserved. The motion play never messages
-  a guest. Frames are staged metadata (jev.plays.vision.STAGED_FRAMES),
+  auto_close gate, and nobody is notified. The motion play never
+  messages a guest.
+- Gathering accumulation (case #6, batch 3): "Camera motion — one
+  crowded frame" sends frame f3 alone — about eleven people on the
+  patio (a model estimate) against Alex's booked party of four —
+  and it LOGS: one frame never fires the gathering notification.
+  "Camera motion — gathering sustained across three frames" sends
+  f26, f27, then f3 (9:20, 9:35, 9:48 PM). The first two log; f3
+  completes the sustained run and flags the OPERATOR, held at the
+  notify_operator gate: "at least 9 people (model estimate,
+  sustained across 3 frames at 3 moments over 28 minutes)" against
+  a threshold of 8 (booked 4 + margin 4), with the frame references
+  and a not-a-headcount line. The sustained floor is the largest N
+  that frames at at least 3 distinct minutes (two cameras at the
+  same minute are one moment), spread over at least 20 minutes
+  inside a rolling 90-minute window, each estimate; the margin is max(4,
+  ceil(booked / 2)). A repeat click finds the stay already flagged
+  and logs — the stay is told again only if the floor grows by
+  another full margin. Frames are staged metadata (jev.plays.vision.STAGED_FRAMES),
   classified by the fixture vision implementation; the live vision
   path was verified against the real API on 2026-10-27 (see
   vision.py for the confirmed request shape) but the sandbox never
@@ -240,6 +268,31 @@ Driving it on the page:
   the lens" twice over). 1A's backyard camera is staged below
   every threshold and earns no note. The report goes to the
   operator only; nothing is sent to a guest or a cleaner.
+- Vendor proof of service (case #23, batch 3): "Vendor proof of
+  service — worker on camera inside the stated window" opens a run
+  on the vendor's stated 10 AM–noon window at Maple Street House
+  (closed that day), then delivers the scheduled close. Frame f6
+  (10:30 AM) reads as a worker — the classification's worker field,
+  a strictly validated optional field on the same schema — so a
+  proof-of-service log entry is written with the frame reference.
+  It is presence evidence only: it never says who the person was,
+  or anything about the quality or completion of the work. "Window
+  closed, no vendor seen" runs the 3–4 PM window for Alex's leak at
+  Garden Unit 1A: the one frame inside it (f28) shows an empty
+  walkway, so the operator gets a held notification that no vendor
+  was seen inside the stated window — the absence of a sighting,
+  not proof the visit did not happen. Frames that cannot be read
+  are never sightings; a window with no frames says so plainly.
+- Move-in signs (case #55, batch 3): "Camera motion — boxes carried
+  in on a third day" sends Jordan's long stay at Studio 2A in
+  order: f29 (arrival-day suitcases — the carrying field reads
+  luggage, which never counts), then f30, f31, f32 — boxes or
+  belongings carried in on three distinct days. The first frames
+  log; f32 raises ONE awareness-only operator notification, held,
+  worded as signs consistent with a possible move-in, never that
+  one is happening. Frame f33 (via the API, later that evening)
+  logs: the stay is already flagged, and it is never flagged
+  twice.
 - In-stay issue: "Guest reports a leak — Garden Unit 1A" runs
   Play 4 against the mid-stay fixture (Alex, in residence
   2026-10-29): the issue is extracted, the stay and the fixture

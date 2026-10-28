@@ -453,6 +453,14 @@ def default_fixture_data() -> dict:
     and Maple Street House's driveway camera classifies most of
     its frames unclear (a dirty lens). 1A's backyard camera is staged
     below every upkeep threshold, as the control.
+    Final-list batch 3 adds one long stay for the move-in-signs case
+    (#55): Jordan, a party of one, arrives at Studio 2A on 2026-11-02
+    for most of November. The stay is keyed on the dates its frames
+    use (the arrival record on 11-02, stay records 11-03 to 11-05),
+    all in November so no earlier fixture date changes meaning. The
+    gathering accumulation (#6) and the vendor proof check (#23)
+    reuse Alex's stay and Maple Street House's closed date with its
+    service window; they need frames, not new calendar records.
     """
     return {
         "properties": {
@@ -515,6 +523,8 @@ def default_fixture_data() -> dict:
         "arrivals": {
             "cedar-2a|2026-10-28": {"guest_name": "Dana"},
             "maple-house|2026-10-28": {"guest_name": "Marcus"},
+            "cedar-2a|2026-11-02": {"guest_name": "Jordan",
+                                    "guest_count": 1},
         },
         "stays": {
             "cedar-1a|2026-10-29": {
@@ -525,6 +535,18 @@ def default_fixture_data() -> dict:
                 "guest_name": "Sam", "guest_count": 2,
                 "arrival_date": "2026-10-30",
                 "departure_date": "2026-10-31"},
+            "cedar-2a|2026-11-03": {
+                "guest_name": "Jordan", "guest_count": 1,
+                "arrival_date": "2026-11-02",
+                "departure_date": "2026-11-28"},
+            "cedar-2a|2026-11-04": {
+                "guest_name": "Jordan", "guest_count": 1,
+                "arrival_date": "2026-11-02",
+                "departure_date": "2026-11-28"},
+            "cedar-2a|2026-11-05": {
+                "guest_name": "Jordan", "guest_count": 1,
+                "arrival_date": "2026-11-02",
+                "departure_date": "2026-11-28"},
         },
         "clean_reports": {
             "cedar-2a|2026-10-28": {

@@ -1,4 +1,4 @@
-import json, os, sys
+import json, math, os, sys
 
 import pytest
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -6,13 +6,18 @@ os.environ["JEV_SPEND_STATE"] = os.path.join(os.path.dirname(__file__), "spend-p
 
 from jev.plays import (FixtureContext, PlayEngine, STAKES,
                        default_fixture_data, get, match)
-from jev.plays.camera_check import (DOG_REASON, CameraCheck,
+from jev.plays.camera_check import (DOG_REASON, MOVE_IN_MIN_DAYS,
+                                    CameraCheck,
                                     CameraOffline, CameraUpkeep,
                                     GuestLockout, GuestUnsafe,
                                     MorningCheck, PostTurnoverCheck,
-                                    SunsetCheck, _NOTIFIED_CLUSTERS,
+                                    SunsetCheck, VendorProof,
+                                    _NOTIFIED_CLUSTERS,
                                     _reset_door_frames,
+                                    _reset_gathering_frames,
+                                    _reset_move_in_signs,
                                     _reset_outage_correlator,
+                                    gathering_margin,
                                     handle_camera_event,
                                     handle_camera_offline_event,
                                     handle_camera_online_event,
@@ -22,7 +27,9 @@ from jev.plays.camera_check import (DOG_REASON, CameraCheck,
                                     handle_morning_check_event,
                                     handle_offline_burst,
                                     handle_post_turnover_event,
-                                    handle_sunset_check_event)
+                                    handle_sunset_check_event,
+                                    handle_vendor_window_closed_event,
+                                    handle_vendor_window_event)
 from jev.plays.vision import FixtureVision, STAGED_FRAMES, parse_classification
 from jev.types import Category, Decision
 
@@ -104,8 +111,15 @@ def test_trivial_scenes_log_only():
 
 
 def test_large_gathering_notifies_operator_held_at_p1(tmp_path):
+    # Case #6 (batch 3): the gathering notification rides on the
+    # stay's sustained estimate. f26 and f27 come first that
+    # evening and log; f3 completes the sustained run and notifies.
+    _reset_gathering_frames()
     log = str(tmp_path / "runs.jsonl")
-    run = _event(_engine(log_path=log), "f3")
+    engine = _engine(log_path=log)
+    for earlier in ("f26", "f27"):
+        assert _event(engine, earlier).data["outcome"] == "logged"
+    run = _event(engine, "f3")
     assert run.status == "completed"
     assert run.data["outcome"] == "notify_operator"
     reality = _step(run, "match_reality")
@@ -115,18 +129,24 @@ def test_large_gathering_notifies_operator_held_at_p1(tmp_path):
     assert classify.result["scene"] == "large_gathering"
     assert classify.result["people_count"] == 11
     assert classify.result["route"] == "notify"
+    assert classify.result["gathering"]["floor"] == 9
+    assert classify.result["gathering"]["threshold"] == 8
 
     notify = _step(run, "notify_operator")
     assert notify.action_key == "notify_operator"
     assert notify.stake == "middle"
     summary = notify.result["summary"]
     assert "Garden Unit 1A" in summary
-    # The headcount is presented as the model's estimate, never as
-    # a proven count.
-    assert "(about 11 people, model estimate)" in summary
+    # The claim is the sustained floor as a model estimate — never
+    # one frame's count, never a census.
+    assert "at least 9 people (model estimate" in summary
+    assert "not a headcount" in summary
+    assert "about 11" not in summary and "eleven" not in summary.lower()
     assert "(11 people)" not in summary
+    assert "f26 (9:20 PM), f27 (9:35 PM), f3 (9:48 PM)" in summary
     assert "party of 4" in summary
     assert "Nothing was sent to the guest" in summary
+    assert notify.result["at_least"] == 9
     # Middle right, not earned in an empty ledger: held, nothing sent.
     assert notify.required_right == "approve_first"
     assert notify.disposition == "hold" and notify.status == "held"
@@ -192,10 +212,14 @@ def test_unknown_person_notifies_even_with_arrival_expected():
 
 
 def test_notify_executes_simulated_when_right_earned():
+    _reset_gathering_frames()
     ledger = {"categories": {"notify_operator": {
         "decisive_n": 30, "decisive_accuracy": 0.96,
         "high_conf_accuracy": 0.99}}}
-    run = _event(_engine(ledger=ledger), "f3")
+    engine = _engine(ledger=ledger)
+    _event(engine, "f26")
+    _event(engine, "f27")
+    run = _event(engine, "f3")
     notify = _step(run, "notify_operator")
     assert notify.required_right == "send_with_log"
     assert notify.status == "done"
@@ -1235,3 +1259,680 @@ def test_batch2_plays_registered_and_neutral_message_matches_none():
     decision = Decision(Category.CONFIRM, 0.9)
     assert match(decision, "There are people outside, the camera "
                            "went off", {}) is None
+
+
+# ---------------------------------------------------------------------
+# Batch 3: classification schema additions (#55 carrying, #23 worker)
+# ---------------------------------------------------------------------
+
+def test_schema_carrying_and_worker_parse_and_validate():
+    ok = parse_classification(
+        '{"scene": "expected_guest", "note": "x", '
+        '"carrying": "boxes_or_belongings", "worker": "present"}')
+    assert ok.carrying == "boxes_or_belongings" and ok.worker == "present"
+    legacy = parse_classification('{"scene": "expected_guest", "note": "x"}')
+    assert legacy.carrying == "unknown" and legacy.worker == "unknown"
+    assert parse_classification(
+        '{"scene": "expected_guest", "carrying": "boxes"}') is None
+    assert parse_classification(
+        '{"scene": "expected_guest", "carrying": null}') is None
+    assert parse_classification(
+        '{"scene": "cleaner", "worker": "yes"}') is None
+    assert parse_classification(
+        '{"scene": "cleaner", "worker": null}') is None
+
+
+# ---------------------------------------------------------------------
+# Batch 3: gathering accumulation (#6)
+# ---------------------------------------------------------------------
+
+def _gathering_world(booked):
+    # Alex's stay at Garden Unit 1A on 2026-10-29, with the booked
+    # party set to `booked`.
+    data = default_fixture_data()
+    data["stays"]["cedar-1a|2026-10-29"]["guest_count"] = booked
+    return data
+
+
+def _run_frames(engine, frames, scene="large_gathering",
+                property_id="cedar-1a", camera="backyard", **extra):
+    # frames: [(frame_id, iso_ts, people_estimate)]. Each is staged
+    # for a custom FixtureVision and delivered as one motion event,
+    # in order. Returns the runs.
+    staged = {fid: {"scene": scene, "people_count": est,
+                    "note": "People on the patio.", **extra}
+              for fid, _ts, est in frames}
+    play = CameraCheck(vision=FixtureVision(staged=staged))
+    return [handle_camera_event(engine, {
+        "property_id": property_id, "date": ts[:10], "camera": camera,
+        "ts": ts, "frame_id": fid}, play=play) for fid, ts, _est in frames]
+
+
+def _evening(levels, times=("21:00", "21:10", "21:20"), prefix="g"):
+    return [(f"{prefix}{i}", f"2026-10-29T{t}:00", n)
+            for i, (n, t) in enumerate(zip(levels, times))]
+
+
+def test_gathering_single_frame_logs_even_far_above_booked():
+    _reset_gathering_frames()
+    run = _event(_engine(), "f3")
+    # Eleven people (model estimate) against a booked four: one frame
+    # is one guess, and it logs only.
+    assert run.data["outcome"] == "logged"
+    assert run.data["gathering_case"] is False
+    classify = _step(run, "classify_frame")
+    assert "a single frame never fires" in classify.result["reason"]
+    assert classify.result["gathering"]["floor"] is None
+    assert _step(run, "notify_operator").status == "skipped"
+    assert _step(run, "log_event").result["logged"] is True
+
+
+def test_gathering_fires_at_booked_plus_margin_never_below():
+    # The owner's rule, restated here independently of the code:
+    # margin = max(4, ceil(booked / 2)). Sustained estimates at
+    # booked, booked + 1, and booked + margin - 1 never fire;
+    # booked + margin fires.
+    for booked in (1, 2, 4, 7, 8, 10, 13):
+        margin = max(4, math.ceil(booked / 2))
+        assert gathering_margin(booked) == margin, booked
+        for level, fires in ((booked, False), (booked + 1, False),
+                             (booked + margin - 1, False),
+                             (booked + margin, True)):
+            _reset_gathering_frames()
+            runs = _run_frames(_engine(data=_gathering_world(booked)),
+                               _evening([level] * 3))
+            last = runs[-1]
+            assert (last.data["outcome"] == "notify_operator") is fires, \
+                (booked, level)
+            assert last.data["gathering_case"] is fires, (booked, level)
+            assert all(r.data["outcome"] == "logged" for r in runs[:-1])
+            read = _step(last, "classify_frame").result["gathering"]
+            assert read["threshold"] == booked + margin
+            assert read["floor"] == level
+            if fires:
+                notify = _step(last, "notify_operator")
+                assert notify.status == "held"
+                assert notify.result["executed"] is False
+                assert f"at least {level} people (model estimate" \
+                    in notify.result["summary"]
+            else:
+                assert _step(last, "notify_operator").status == "skipped"
+
+
+def test_gathering_one_peak_frame_cannot_carry_the_floor():
+    _reset_gathering_frames()
+    runs = _run_frames(_engine(), _evening([4, 30, 4]))
+    assert all(r.data["outcome"] == "logged" for r in runs)
+    read = _step(runs[-1], "classify_frame").result["gathering"]
+    # The peak is one frame; what was sustained is four.
+    assert read["floor"] == 4 and read["threshold"] == 8
+    assert read["fire"] is False
+
+
+def test_gathering_needs_enough_frames_and_enough_span():
+    _reset_gathering_frames()
+    two = _run_frames(_engine(), _evening([12, 12], ("21:00", "21:30")))
+    assert all(r.data["outcome"] == "logged" for r in two)
+    assert _step(two[-1], "classify_frame").result["gathering"]["floor"] \
+        is None
+    # Three frames inside five minutes are one moment, not a
+    # sustained gathering; a fourth frame twenty-five minutes on
+    # makes it sustained.
+    _reset_gathering_frames()
+    engine = _engine()
+    burst = _run_frames(engine, _evening([12, 12, 12],
+                                         ("21:00", "21:02", "21:05")))
+    assert all(r.data["outcome"] == "logged" for r in burst)
+    later = _run_frames(engine, [("g9", "2026-10-29T21:25:00", 12)])[0]
+    assert later.data["outcome"] == "notify_operator"
+    assert _step(later, "classify_frame").result["gathering"][
+        "span_minutes"] == 25
+
+
+def test_gathering_window_rolls():
+    _reset_gathering_frames()
+    runs = _run_frames(_engine(), _evening(
+        [12, 12, 12, 12], ("21:00", "22:00", "23:00", "23:10")))
+    # At 11 PM the 9 PM frame has rolled out of the 90-minute
+    # window: two frames, nothing sustained. At 11:10 PM three
+    # frames inside the window span 70 minutes: it fires.
+    assert [r.data["outcome"] for r in runs] == \
+        ["logged", "logged", "logged", "notify_operator"]
+    read = _step(runs[-1], "classify_frame").result["gathering"]
+    assert [f["frame_id"] for f in read["frames"]] == ["g1", "g2", "g3"]
+
+
+def test_gathering_accumulates_per_stay_never_across_bookings():
+    _reset_gathering_frames()
+    engine = _engine()
+    # Alex's stay late on the 29th, then Sam's stay just after
+    # midnight: inside one 90-minute window, but two bookings.
+    alex = _run_frames(engine, [("a0", "2026-10-29T23:30:00", 12),
+                                ("a1", "2026-10-29T23:45:00", 12)])
+    sam = _run_frames(engine, [("s0", "2026-10-30T00:05:00", 12)])
+    assert all(r.data["outcome"] == "logged" for r in alex + sam)
+    more = _run_frames(engine, [("s1", "2026-10-30T00:20:00", 12),
+                                ("s2", "2026-10-30T00:30:00", 12)])
+    assert more[-1].data["outcome"] == "notify_operator"
+    read = _step(more[-1], "classify_frame").result["gathering"]
+    assert [f["frame_id"] for f in read["frames"]] == ["s0", "s1", "s2"]
+    assert read["booked"] == 2
+
+
+def test_gathering_party_scene_frames_accumulate_unknown_people_do_not():
+    _reset_gathering_frames()
+    # Dana's arrival day at Studio 2A, booked party of two: arrival
+    # frames reading six people sustain a floor of six = 2 + 4.
+    guests = _run_frames(_engine(), [
+        ("e0", "2026-10-28T15:00:00", 6), ("e1", "2026-10-28T15:10:00", 6),
+        ("e2", "2026-10-28T15:20:00", 6)],
+        scene="expected_guest", property_id="cedar-2a", camera="front-door")
+    assert guests[-1].data["gathering_case"] is True
+    _reset_gathering_frames()
+    strangers = _run_frames(_engine(), [
+        ("u0", "2026-10-28T15:00:00", 6), ("u1", "2026-10-28T15:10:00", 6),
+        ("u2", "2026-10-28T15:20:00", 6)],
+        scene="unknown_person", property_id="cedar-2a", camera="front-door")
+    # Unknown people notify on their own reason, frame by frame;
+    # they never build a gathering claim.
+    for run in strangers:
+        assert run.data["outcome"] == "notify_operator"
+        assert run.data["gathering"] is None
+        assert run.data["gathering_case"] is False
+
+
+def test_gathering_notifies_once_then_again_only_when_it_grows():
+    _reset_gathering_frames()
+    engine = _engine()
+    first = _run_frames(engine, _evening([9, 9, 9]))
+    assert first[-1].data["outcome"] == "notify_operator"
+    # Still sustained at nine: already flagged, logged, not re-sent.
+    again = _run_frames(engine, [("g3", "2026-10-29T21:30:00", 9)])[0]
+    assert again.data["outcome"] == "logged"
+    assert "already flagged" in _step(again, "classify_frame").result["reason"]
+    # A re-fired frame is one frame, not two.
+    refire = _run_frames(engine, [("g3", "2026-10-29T21:30:00", 9)])[0]
+    assert _step(refire, "classify_frame").result["gathering"][
+        "frames_in_window"] == 4
+    # Grown by another full margin (9 + 4 = 13): notified again.
+    grown = _run_frames(engine, [("h0", "2026-10-29T21:40:00", 13),
+                                 ("h1", "2026-10-29T21:50:00", 13),
+                                 ("h2", "2026-10-29T22:00:00", 13)])
+    assert [r.data["outcome"] for r in grown] == \
+        ["logged", "logged", "notify_operator"]
+    assert _step(grown[-1], "notify_operator").result["at_least"] == 13
+
+
+def test_gathering_frame_with_no_estimate_fails_safe_without_a_claim():
+    _reset_gathering_frames()
+    vision = FixtureVision({"fx-crowd": {
+        "scene": "large_gathering", "people_count": None,
+        "note": "A crowd on the patio."}})
+    run = _event(_engine(), "f3", play=CameraCheck(vision=vision),
+                 frame_id="fx-crowd")
+    assert run.data["outcome"] == "notify_operator"
+    assert _held(run)
+    reason = _step(run, "classify_frame").result["reason"]
+    assert "carries no people estimate" in reason
+    assert "could not be checked against the booked party" in reason
+    summary = _step(run, "notify_operator").result["summary"]
+    assert "more people" not in summary and "at least" not in summary
+    assert run.data["gathering"] is None
+
+
+def test_gathering_unreadable_frames_never_count_but_still_notify():
+    _reset_gathering_frames()
+    engine = _engine()
+    # A covered camera's frames notify for the camera, and their
+    # people reads are worthless — they never accumulate.
+    covered = _run_frames(engine, _evening([20, 20, 20], prefix="c"),
+                          view="blocked")
+    for run in covered:
+        assert run.data["outcome"] == "notify_operator"
+        assert "view reads blocked" in run.data["flag_reason"]
+        assert run.data["gathering"] is None
+    # A classify failure in the middle of a run notifies on its own
+    # and is not counted; the run needs a third readable frame.
+    _reset_gathering_frames()
+    staged = {"k0": {"scene": "large_gathering", "people_count": 12,
+                     "note": "x"},
+              "k2": {"scene": "large_gathering", "people_count": 12,
+                     "note": "x"},
+              "k3": {"scene": "large_gathering", "people_count": 12,
+                     "note": "x"}}
+    play = CameraCheck(vision=FixtureVision(staged=staged))
+    engine = _engine()
+    outcomes = []
+    for fid, t in (("k0", "21:00"), ("k1-unstaged", "21:10"),
+                   ("k2", "21:20"), ("k3", "21:30")):
+        run = handle_camera_event(engine, {
+            "property_id": "cedar-1a", "date": "2026-10-29",
+            "camera": "backyard", "ts": f"2026-10-29T{t}:00",
+            "frame_id": fid}, play=play)
+        outcomes.append((run.data["outcome"],
+                         _step(run, "classify_frame").result["scene"]))
+    assert outcomes == [("logged", "large_gathering"),
+                        ("notify_operator", "unclassified"),
+                        ("logged", "large_gathering"),
+                        ("notify_operator", "large_gathering")]
+
+
+def test_gathering_at_a_closed_house_or_with_no_booking_still_notifies():
+    _reset_gathering_frames()
+    closed = _run_frames(_engine(), [("v0", "2026-10-30T21:00:00", 5)],
+                         property_id="maple-house", camera="front-door")[0]
+    assert closed.data["outcome"] == "notify_operator"
+    assert "closed and should be vacant" in closed.data["flag_reason"]
+    assert closed.data["gathering"] is None
+    unbooked = _run_frames(_engine(), [("n0", "2026-10-28T21:00:00", 5)])[0]
+    assert unbooked.data["outcome"] == "notify_operator"
+    assert "no arrival or stay on record" in unbooked.data["flag_reason"]
+
+
+def test_gathering_span_edge_nineteen_minutes_logs_twenty_fires():
+    _reset_gathering_frames()
+    short = _run_frames(_engine(), _evening([12] * 3,
+                                            ("21:00", "21:10", "21:19")))
+    assert all(r.data["outcome"] == "logged" for r in short)
+    assert _step(short[-1], "classify_frame").result["gathering"][
+        "floor"] is None
+    _reset_gathering_frames()
+    edge = _run_frames(_engine(), _evening([12] * 3))   # 21:00 to 21:20
+    assert [r.data["outcome"] for r in edge] == \
+        ["logged", "logged", "notify_operator"]
+    assert _step(edge[-1], "classify_frame").result["gathering"][
+        "span_minutes"] == 20
+
+
+def test_gathering_window_edge_ninety_minutes_stays_ninety_one_drops():
+    _reset_gathering_frames()
+    inside = _run_frames(_engine(), _evening([12] * 3,
+                                             ("21:00", "21:45", "22:30")))
+    # A frame exactly 90 minutes before the newest is still in.
+    assert inside[-1].data["outcome"] == "notify_operator"
+    read = _step(inside[-1], "classify_frame").result["gathering"]
+    assert read["frames_in_window"] == 3 and read["span_minutes"] == 90
+    _reset_gathering_frames()
+    outside = _run_frames(_engine(), _evening([12] * 3,
+                                              ("21:00", "21:45", "22:31")))
+    # At 91 minutes it has rolled out: two frames, nothing sustained.
+    assert all(r.data["outcome"] == "logged" for r in outside)
+    read = _step(outside[-1], "classify_frame").result["gathering"]
+    assert read["frames_in_window"] == 2 and read["floor"] is None
+
+
+def test_gathering_two_cameras_never_sum_and_one_minute_is_one_moment():
+    def both_cameras(engine, times, est, prefix):
+        runs = []
+        for i, t in enumerate(times):
+            for cam in ("backyard", "front-door"):
+                runs += _run_frames(engine, [(f"{prefix}-{cam}-{i}",
+                                              f"2026-10-29T{t}:00", est)],
+                                    camera=cam)
+        return runs
+
+    _reset_gathering_frames()
+    # Alex's booked four, threshold eight. Both cameras read five at
+    # the same three minutes: summed that would be ten; never summed,
+    # the floor is five and nothing fires.
+    runs = both_cameras(_engine(), ("21:00", "21:10", "21:20"), 5, "s")
+    assert all(r.data["outcome"] == "logged" for r in runs)
+    read = _step(runs[-1], "classify_frame").result["gathering"]
+    assert read["frames_in_window"] == 6
+    assert read["floor"] == 5 and read["threshold"] == 8
+    # Two cameras at one minute are one moment: four frames at two
+    # minutes, twenty apart, do not sustain; a third minute does.
+    _reset_gathering_frames()
+    engine = _engine()
+    runs = both_cameras(engine, ("21:00", "21:20"), 9, "m")
+    assert all(r.data["outcome"] == "logged" for r in runs)
+    assert _step(runs[-1], "classify_frame").result["gathering"][
+        "floor"] is None
+    third = _run_frames(engine, [("m-backyard-2", "2026-10-29T21:30:00", 9)])[0]
+    assert third.data["outcome"] == "notify_operator"
+    assert "sustained across 5 frames at 3 moments over 30 minutes" \
+        in _step(third, "notify_operator").result["summary"]
+
+
+# ---------------------------------------------------------------------
+# Batch 3: move-in signs (#55)
+# ---------------------------------------------------------------------
+
+_MOVE_IN_ASSERTIONS = ("is moving in", "are moving in", "moved in",
+                       "move-in is happening", "is a move-in")
+
+
+def test_move_in_three_distinct_days_raise_one_awareness_notification():
+    _reset_move_in_signs()
+    engine = _engine()
+    luggage = _event(engine, "f29")
+    # Arrival-day suitcases are ordinary luggage: never counted.
+    assert luggage.data["outcome"] == "logged"
+    assert luggage.data["move_in"] is None
+    day1, day2 = _event(engine, "f30"), _event(engine, "f31")
+    for run, n in ((day1, 1), (day2, 2)):
+        assert run.data["outcome"] == "logged"
+        assert run.data["move_in"]["days"] == n
+        assert f"{n} of {MOVE_IN_MIN_DAYS} distinct days" \
+            in _step(run, "classify_frame").result["reason"]
+        assert _step(run, "notify_operator").status == "skipped"
+    day3 = _event(engine, "f32")
+    assert day3.data["outcome"] == "notify_operator"
+    assert day3.data["move_in_case"] is True
+    notify = _step(day3, "notify_operator")
+    assert notify.status == "held" and notify.result["executed"] is False
+    assert notify.result["awareness_only"] is True
+    summary = notify.result["summary"]
+    assert "signs consistent with a possible move-in" in summary
+    assert "Awareness only: these signs do not confirm a move-in" in summary
+    assert "f30 (2026-11-03), f31 (2026-11-04), f32 (2026-11-05)" in summary
+    assert "Nothing was sent to the guest" in summary
+    for claim in _MOVE_IN_ASSERTIONS:
+        assert claim not in summary.lower(), claim
+    assert all(s.action_key != "message_guest" for s in day3.steps)
+    # ONE notification per stay: later frames log, noting it.
+    after = _event(engine, "f33")
+    assert after.data["outcome"] == "logged"
+    assert "already flagged" in _step(after, "classify_frame").result["reason"]
+
+
+def _boxes(engine, frames, carrying="boxes_or_belongings",
+           scene="expected_guest"):
+    # frames: [(frame_id, iso_ts)] at Studio 2A's front door.
+    staged = {fid: {"scene": scene, "people_count": 1,
+                    "note": "A person carrying things to the door.",
+                    "carrying": carrying} for fid, _ts in frames}
+    play = CameraCheck(vision=FixtureVision(staged=staged))
+    return [handle_camera_event(engine, {
+        "property_id": "cedar-2a", "date": ts[:10], "camera": "front-door",
+        "ts": ts, "frame_id": fid}, play=play) for fid, ts in frames]
+
+
+def test_move_in_below_the_pattern_logs_only():
+    _reset_move_in_signs()
+    two_days = _boxes(_engine(), [("b0", "2026-11-03T18:00:00"),
+                                  ("b1", "2026-11-04T18:00:00")])
+    assert all(r.data["outcome"] == "logged" for r in two_days)
+    _reset_move_in_signs()
+    # Three frames, one day: one distinct day, not a pattern.
+    one_day = _boxes(_engine(), [("d0", "2026-11-03T17:00:00"),
+                                 ("d1", "2026-11-03T18:00:00"),
+                                 ("d2", "2026-11-03T19:00:00")])
+    assert all(r.data["outcome"] == "logged" for r in one_day)
+    assert one_day[-1].data["move_in"]["days"] == 1
+
+
+def test_move_in_luggage_and_unread_carrying_never_count():
+    days = [("x0", "2026-11-03T18:00:00"), ("x1", "2026-11-04T18:00:00"),
+            ("x2", "2026-11-05T18:00:00")]
+    for carrying in ("luggage", "none", "unknown"):
+        _reset_move_in_signs()
+        runs = _boxes(_engine(), days, carrying=carrying)
+        assert all(r.data["outcome"] == "logged" for r in runs), carrying
+        assert all(r.data["move_in"] is None for r in runs), carrying
+
+
+def test_move_in_pattern_is_per_stay():
+    _reset_move_in_signs()
+    data = default_fixture_data()
+    data["stays"]["cedar-2a|2026-11-06"] = {
+        "guest_name": "Riley", "guest_count": 1,
+        "arrival_date": "2026-11-06", "departure_date": "2026-11-09"}
+    runs = _boxes(_engine(data=data), [("p0", "2026-11-03T18:00:00"),
+                                       ("p1", "2026-11-04T18:00:00"),
+                                       ("p2", "2026-11-06T18:00:00")])
+    # Two days on Jordan's stay and one on Riley's: no pattern.
+    assert all(r.data["outcome"] == "logged" for r in runs)
+    assert runs[-1].data["move_in"]["days"] == 1
+
+
+def test_move_in_rides_along_with_a_frame_that_already_notifies():
+    _reset_move_in_signs()
+    engine = _engine()
+    _boxes(engine, [("q0", "2026-11-03T18:00:00"),
+                    ("q1", "2026-11-04T18:00:00")])
+    third = _boxes(engine, [("q2", "2026-11-05T18:00:00")],
+                   scene="unknown_person")[0]
+    # The frame's own reason and the pattern both reach the
+    # operator; neither silences the other.
+    assert third.data["outcome"] == "notify_operator"
+    assert third.data["move_in_case"] is True
+    reason = third.data["flag_reason"]
+    assert "matches nobody expected" in reason
+    assert "signs consistent with a possible move-in" in reason
+
+
+def test_move_in_vision_failure_fails_safe_and_never_counts():
+    _reset_move_in_signs()
+    engine = _engine()
+    _boxes(engine, [("r0", "2026-11-03T18:00:00"),
+                    ("r1", "2026-11-04T18:00:00")])
+    failed = handle_camera_event(engine, {
+        "property_id": "cedar-2a", "date": "2026-11-05",
+        "camera": "front-door", "ts": "2026-11-05T18:00:00",
+        "frame_id": "r2"}, play=CameraCheck(vision=_BoomVision()))
+    assert failed.data["outcome"] == "notify_operator"
+    assert failed.data["move_in_case"] is False
+    assert "could not be classified" in failed.data["flag_reason"]
+    assert "move-in" not in failed.data["flag_reason"]
+
+
+def test_move_in_with_no_arrival_date_on_record_says_so_on_the_log():
+    _reset_move_in_signs()
+    data = default_fixture_data()
+    for day in ("2026-11-03", "2026-11-04", "2026-11-05"):
+        data["stays"][f"cedar-2a|{day}"]["arrival_date"] = ""
+    engine = _engine(data=data)
+    # Each day keys on its own, so the pattern cannot complete — and
+    # the log says why instead of going quiet.
+    for run in (_event(engine, fid) for fid in ("f30", "f31", "f32")):
+        assert run.data["outcome"] == "logged"
+        assert run.data["move_in"]["days"] == 1
+        assert ("the stay's arrival date is not on record, so days "
+                "cannot be grouped across this stay") \
+            in _step(run, "classify_frame").result["reason"]
+
+
+# ---------------------------------------------------------------------
+# Batch 3: vendor proof of service (#23)
+# ---------------------------------------------------------------------
+
+def _vendor(engine, play=None, close=True, close_payload=None, **payload):
+    base = {"property_id": "maple-house", "date": "2026-10-30",
+            "vendor": "Fixture Handyman",
+            "window_start": "10:00", "window_end": "12:00"}
+    base.update(payload)
+    run = handle_vendor_window_event(engine, base, play=play)
+    if close:
+        handle_vendor_window_closed_event(engine, run, close_payload)
+    return run
+
+
+def test_vendor_proof_waits_for_the_stated_window_to_close():
+    run = _vendor(_engine(), close=False)
+    assert run.play == "camera_vendor_proof"
+    assert run.status == "waiting"
+    assert _step(run, "wait_vendor_window").status == "done"
+    assert _step(run, "match_reality").result["window"] \
+        == "10:00 AM–12:00 PM"
+    assert _step(run, "wait_window_closed").status == "waiting"
+    assert _step(run, "log_proof").status == "pending"
+    assert _step(run, "notify_operator").status == "pending"
+
+
+def test_vendor_sighting_writes_proof_of_service_log_with_frame():
+    run = _vendor(_engine())
+    assert run.status == "completed"
+    assert run.data["outcome"] == "proof_of_service_logged"
+    check = _step(run, "check_window_frames")
+    # f6 (10:30 AM) is inside the window; f5 (10:15 PM) is not.
+    assert [f["frame_id"] for f in check.result["window_frames"]] == ["f6"]
+    assert check.result["sightings"] == ["f6"]
+    proof = _step(run, "log_proof")
+    assert proof.action_key == "auto_close" and proof.stake == "low"
+    assert proof.result["logged"] is True
+    assert proof.result["frame_id"] == "f6"
+    assert proof.result["proof_of_service"][0]["frame_id"] == "f6"
+    entry = proof.result["entry"]
+    assert "frame f6" in entry and "10:30 AM" in entry
+    assert "inside the stated arrival window" in entry
+    assert "Presence evidence only" in entry
+    assert "says nothing about who the person was" in entry
+    # Never a word about the work itself, never an identity.
+    for claim in ("completed the", "work is complete", "work was done",
+                  "job done", "fixed", "Fixture Handyman was seen",
+                  "the vendor was seen"):
+        assert claim not in entry, claim
+    assert _step(run, "notify_operator").status == "skipped"
+    assert all(s.action_key not in ("message_guest", "message_cleaner",
+                                    "dispatch_vendor") for s in run.steps)
+
+
+def test_vendor_no_sighting_notifies_operator_held():
+    run = _vendor(_engine(), property_id="cedar-1a", date="2026-10-29",
+                  window_start="15:00", window_end="16:00")
+    assert run.status == "completed"
+    assert run.data["outcome"] == "notify_operator"
+    check = _step(run, "check_window_frames")
+    assert check.result["frames_checked"] == 1
+    assert check.result["sightings"] == []
+    notify = _step(run, "notify_operator")
+    assert notify.action_key == "notify_operator"
+    assert notify.status == "held" and notify.result["executed"] is False
+    summary = notify.result["summary"]
+    assert "no vendor was seen inside the stated window" in summary
+    assert "3:00 PM–4:00 PM" in summary
+    assert "f28 (front-door, 3:25 PM): nothing notable" in summary
+    assert "not proof the visit did not happen" in summary
+    assert "Nothing was sent to the vendor or the guest" in summary
+    assert _step(run, "log_proof").status == "skipped"
+
+
+def test_vendor_window_with_no_frames_says_so_plainly():
+    run = _vendor(_engine(), window_start="13:00", window_end="14:00")
+    assert run.data["outcome"] == "notify_operator"
+    summary = _step(run, "notify_operator").result["summary"]
+    assert "No camera frames are on record inside the window" in summary
+
+
+def test_vendor_frames_outside_the_window_day_or_camera_are_ignored():
+    frames = [{"frame_id": "w-early", "camera": "front-door",
+               "ts": "2026-10-30T09:59:00"},
+              {"frame_id": "w-late", "camera": "front-door",
+               "ts": "2026-10-30T12:01:00"},
+              {"frame_id": "w-day", "camera": "front-door",
+               "ts": "2026-10-31T10:30:00"},
+              {"frame_id": "w-cam", "camera": "driveway",
+               "ts": "2026-10-30T10:30:00"}]
+    vision = FixtureVision({fid: {"scene": "cleaner", "people_count": 1,
+                                  "note": "x", "worker": "present"}
+                            for fid in ("w-early", "w-late", "w-day",
+                                        "w-cam")})
+    run = _vendor(_engine(), play=VendorProof(vision=vision),
+                  camera="front-door", close_payload={"frames": frames})
+    assert run.data["outcome"] == "notify_operator"
+    assert _step(run, "check_window_frames").result["frames_checked"] == 0
+
+
+def test_vendor_unread_frames_are_never_sightings():
+    frames = [{"frame_id": fid, "camera": "front-door",
+               "ts": f"2026-10-30T{t}:00"}
+              for fid, t in (("u-dark", "10:20"), ("u-covered", "10:40"),
+                             ("u-unstaged", "11:00"))]
+    vision = FixtureVision({
+        "u-dark": {"scene": "unclear", "people_count": None,
+                   "note": "Too dark.", "worker": "present"},
+        "u-covered": {"scene": "cleaner", "people_count": 1, "note": "x",
+                      "view": "blocked", "worker": "present"}})
+    run = _vendor(_engine(), play=VendorProof(vision=vision),
+                  close_payload={"frames": frames})
+    assert run.data["outcome"] == "notify_operator"
+    check = _step(run, "check_window_frames")
+    assert check.result["unreadable"] == 3
+    assert check.result["sightings"] == []
+    summary = _step(run, "notify_operator").result["summary"]
+    assert "could not be read" in summary
+    assert "3 of them could not be read" in summary
+
+
+def test_vendor_person_not_reading_as_worker_is_not_a_sighting():
+    frames = [{"frame_id": "n-person", "camera": "front-door",
+               "ts": "2026-10-30T10:20:00"},
+              {"frame_id": "n-absent", "camera": "front-door",
+               "ts": "2026-10-30T10:40:00"}]
+    vision = FixtureVision({
+        "n-person": {"scene": "unknown_person", "people_count": 1,
+                     "note": "A person at the door."},
+        # An explicit "absent" is never overridden by the scene.
+        "n-absent": {"scene": "cleaner", "people_count": 1, "note": "x",
+                     "worker": "absent"}})
+    run = _vendor(_engine(), play=VendorProof(vision=vision),
+                  close_payload={"frames": frames})
+    assert run.data["outcome"] == "notify_operator"
+    summary = _step(run, "notify_operator").result["summary"]
+    assert "n-person (front-door, 10:20 AM): unknown person — a person " \
+           "who did not read as a worker; check the still" in summary
+
+
+def test_vendor_unknown_worker_read_never_writes_proof_of_service():
+    frames = [{"frame_id": "k-missing", "camera": "front-door",
+               "ts": "2026-10-30T10:20:00"},
+              {"frame_id": "k-unknown", "camera": "front-door",
+               "ts": "2026-10-30T10:40:00"}]
+    # A cleaner scene with the worker field unread (missing, or an
+    # explicit "unknown") is never presence evidence.
+    vision = FixtureVision({
+        "k-missing": {"scene": "cleaner", "people_count": 1, "note": "x"},
+        "k-unknown": {"scene": "cleaner", "people_count": 1, "note": "x",
+                      "worker": "unknown"}})
+    run = _vendor(_engine(), play=VendorProof(vision=vision),
+                  close_payload={"frames": frames})
+    assert run.data["outcome"] == "notify_operator"
+    check = _step(run, "check_window_frames")
+    assert check.result["frames_checked"] == 2
+    assert check.result["sightings"] == []
+    assert _step(run, "log_proof").status == "skipped"
+    assert _held(run)
+    summary = _step(run, "notify_operator").result["summary"]
+    assert "k-missing (front-door, 10:20 AM): cleaner — a person who " \
+           "did not read as a worker; check the still" in summary
+
+
+def test_vendor_sighting_alongside_unread_frames_still_logs_proof():
+    frames = [{"frame_id": "s-dark", "camera": "front-door",
+               "ts": "2026-10-30T10:10:00"},
+              {"frame_id": "s-worker", "camera": "front-door",
+               "ts": "2026-10-30T10:45:00"}]
+    vision = FixtureVision({
+        "s-dark": {"scene": "unclear", "people_count": None, "note": "x"},
+        "s-worker": {"scene": "unknown_person", "people_count": 1,
+                     "note": "A person with a toolbox.",
+                     "worker": "present"}})
+    run = _vendor(_engine(), play=VendorProof(vision=vision),
+                  close_payload={"frames": frames})
+    assert run.data["outcome"] == "proof_of_service_logged"
+    entry = _step(run, "log_proof").result["entry"]
+    assert "frame s-worker" in entry
+    assert "1 other frame(s) inside the window could not be read" in entry
+    assert _step(run, "notify_operator").status == "skipped"
+
+
+def test_vendor_proof_malformed_and_unknown_property():
+    for bad in ({"window_start": ""}, {"window_end": "noon"},
+                {"window_start": "10am"}, {"window_start": "25:00"},
+                {"window_start": "12:00", "window_end": "10:00"},
+                {"date": "Oct 30"}, {"property_id": ""}):
+        with pytest.raises(ValueError):
+            _vendor(_engine(), close=False, **bad)
+    run = _vendor(_engine(), property_id="no-such-property")
+    assert run.status == "held_for_human"
+    assert _step(run, "notify_operator").status == "pending"
+
+
+def test_batch3_plays_registered_and_neutral_message_matches_none():
+    # Same proven-neutral message as the earlier registration
+    # tests: the vendor proof play never starts from a Decision.
+    assert get("camera_vendor_proof") is not None
+    assert match(Decision(Category.ACT, 0.9),
+                 "There are people outside, the camera went off",
+                 {}) is None
