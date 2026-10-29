@@ -307,6 +307,8 @@
   .step > div { margin-top: 6px; }
   .step ul { margin: 6px 0 0; padding-left: 20px; }
   .step .sname { font: 700 15px/20px var(--font-display); }
+  .step-mk { display: inline-block; width: 7px; height: 7px; margin-right: 9px;
+             background: var(--amber); transform: rotate(45deg); vertical-align: 2px; }
   .kind { display: inline-block; margin-left: 8px; padding: 3px 7px; border-radius: var(--r-sm); vertical-align: 1px;
           background: rgba(16,30,60,.08); font: 700 11px/1 var(--font-text); letter-spacing: .1em; text-transform: uppercase; }
   .kind.k-action { background: var(--tan); color: var(--navy); }
@@ -605,7 +607,7 @@
       </article>
 
       <article class="play panel" id="play-late" aria-labelledby="h-late">
-        <div class="play-head"><span class="num" aria-hidden="true">05</span><h3 id="h-late">Play: special request → late checkout</h3></div>
+        <div class="play-head"><span class="num ic ic-late" aria-hidden="true"></span><h3 id="h-late">Play: special request → late checkout</h3></div>
         <div class="play-grid">
           <div class="play-ctl">
             <p>A departing guest asks to check out late. Comfi Autopilot reads the staged calendar for
@@ -633,7 +635,7 @@
     <section id="cameras" class="cams" aria-labelledby="h-cameras">
       <div class="sec-head"><h2 class="display sec-title" id="h-cameras"><span class="sec-s ic ic-cameras" aria-hidden="true"></span>Cameras</h2></div>
       <article class="play panel" aria-labelledby="h-cam">
-      <div class="play-head"><span class="num" aria-hidden="true">06</span><h3 id="h-cam">Play: camera check</h3></div>
+      <div class="play-head"><span class="num ic ic-cameras" aria-hidden="true"></span><h3 id="h-cam">Play: camera check</h3></div>
       <div class="cam-desc">
       <p>An outside camera reports motion — no message from anyone. Comfi Autopilot classifies
          the staged frame, checks it against the staged calendar, and either logs it
@@ -843,7 +845,7 @@
       if (run.hold_reason) h += '<br><span class="err">Held for a human: ' + esc(run.hold_reason) + '</span>';
       h += '</div>';
       run.steps.forEach((s, i) => {
-        h += '<div class="step s-' + esc(s.status) + '"><span class="sname">' + (i + 1) + '. ' +
+        h += '<div class="step s-' + esc(s.status) + '"><span class="sname"><span class="step-mk" aria-hidden="true"></span>' +
           esc(s.name) + '</span><span class="kind k-' + esc(s.kind) + '">' + esc(s.kind) +
           '</span> · <span class="status">' + esc(s.status) + '</span>';
         if (s.kind === 'action')
