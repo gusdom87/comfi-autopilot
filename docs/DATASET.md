@@ -6,10 +6,15 @@ category plus confidence-based action bands; the operator then hand-reviewed
 every decision as correct, unsure, or wrong. 109 reviews, 107 unique messages.
 
 Redaction (before any eval use): guest names replaced with stable pseudonyms,
-sender names in quoted headers replaced, addresses and identifiers removed,
-message/account IDs dropped, properties pseudonymized. Verification scan:
-zero residual emails, phone numbers, or full names. The mapping file is
-private and is never published; the dataset itself is NOT in this repo.
+sender names in quoted headers replaced, street addresses replaced with an
+[ADDRESS] token, identifiers removed, message/account IDs dropped,
+properties pseudonymized. Verification scan: zero residual emails, phone
+numbers, or full names. Three rows kept a city, state, and ZIP after the
+[ADDRESS] token until Oct 29, 2026, when the address redaction was
+completed. The eval runs of record were measured on the file before that
+completion; the only difference is those three location strings. The
+mapping file is private and is never published; the dataset itself is NOT
+in this repo.
 
 Label derivation (this is the part to argue with):
 Only messages the operator graded "correct" carry a label (89 of 107); the
@@ -34,4 +39,6 @@ high-confidence accuracy 79.5%. The README numbers are from this run.
 Known limits: n=89 (now 107) is small; labels inherit the pilot's category definitions;
 message previews are truncated by the source system. Every reported number
 carries its n, and the confidence ledger treats this set as a floor, not a
-ceiling: live decisions during the event add fresh labeled rows daily.
+ceiling. Beyond this set, a log-only shadow mode scores live inbound guest
+messages and never sends. Its decisions are graded by hand only when
+reviewed. No shadow results are published or claimed.

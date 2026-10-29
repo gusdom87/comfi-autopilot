@@ -153,7 +153,7 @@ Driving it on the page:
   guest (Dana arrives that day), the run logs it through the
   auto_close gate, and nobody is notified. The motion play never
   messages a guest.
-- Gathering accumulation (case #6, batch 3): "Camera motion — one
+- Gathering accumulation: "Camera motion — one
   crowded frame" sends frame f3 alone — about eleven people on the
   patio (a model estimate) against Alex's booked party of four —
   and it LOGS: one frame never fires the gathering notification.
@@ -198,7 +198,8 @@ Driving it on the page:
   flagged. "All secured" (frame f8: door closed, lights off)
   logs only. A frame that cannot settle the state flags the
   operator too.
-- Camera covered (final-list case #17): "Camera covered —
+- Camera covered or turned away (the lens is blocked, or the camera
+  is knocked off its usual view): "Camera covered —
   one-night weekend stay" uses frame f10: the classification's
   view field reads blocked (a second strictly validated optional
   field on the same schema), so the operator is flagged whatever
@@ -207,7 +208,7 @@ Driving it on the page:
   A merely unclear frame never counts as covered; the view has
   to read blocked or shifted explicitly (frame f11, via the API,
   is the shifted variant at Studio 2A).
-- Guest lockout (case #10): "Guest lockout — person at the shut
+- Guest lockout: "Guest lockout — person at the shut
   door" reports a lockout at Studio 2A and pins frame f13: the
   operator's notification carries the exact, small claim — a
   person is at the door and the door reads shut — plus the frame
@@ -217,13 +218,13 @@ Driving it on the page:
   inside the arrival window) complete the dwell pattern and the
   second run flags the operator with the stuck-at-the-door
   reason; frame f14 (door open) breaks the pattern and logs.
-- Guest feels unsafe (case #49): "Guest feels unsafe" assembles
+- Guest feels unsafe: "Guest feels unsafe" assembles
   Studio 2A's latest three frames — references plus their staged
   classifications, nothing more claimed — into one URGENT
   operator notification. At a property with no frames on record
   for the date (Garden Unit 1A on 2026-10-28, via the API), the
   notification says exactly that: the absence is the information.
-- Sunset check (case #11): "Sunset check — entry dark, second
+- Sunset check: "Sunset check — entry dark, second
   night running" uses frame f16 at Studio 2A on Dana's arrival
   day: the entry lights read off, and because the fixtures carry
   one dark night already, the notification adds the bulb change
@@ -231,7 +232,7 @@ Driving it on the page:
   API) is a first dark night — flagged, no bulb line; frame f17
   (lights on) logs only; and with no arrival that day the check
   logs whatever it reads.
-- Dog with no pet on the booking (case #46): "Camera motion —
+- Dog with no pet on the booking: "Camera motion —
   dog arriving with the party" uses frame f19 at Maple Street House
   on Marcus's arrival day: the classification's animal field
   reads dog_sized (a third strictly validated optional field on
@@ -242,7 +243,7 @@ Driving it on the page:
   f20 (via the API) is the control: a dog-sized animal crossing
   the driveway alone at night logs quietly, and a booking that
   lists a pet (a fixture variant) logs too.
-- Morning snow check (case #32): "Morning check — snow still
+- Morning snow check: "Morning check — snow still
   down at an empty home" uses frame f21 at Maple Street House on
   2026-10-29, a day with no stay, arrival, or turnover there:
   the classification's ground field reads snow_covered past the
@@ -252,7 +253,7 @@ Driving it on the page:
   (clear) logs; frame f24 (ground unsettled) flags, fail safe;
   and at an occupied home (frame f25, Alex mid-stay) the check
   skips quietly by design.
-- Area outage (case #36): "Area outage — three cameras drop at
+- Area outage: "Area outage — three cameras drop at
   once" fires three camera_offline events inside eleven minutes
   (two Cedar Hollow properties, three cameras, one shared area
   label). Each runs the ordinary offline play; when the third
@@ -264,7 +265,7 @@ Driving it on the page:
   property, a wider window) nothing changes. A cluster touching
   a vacant property in a freezing month adds the freeze-risk
   line to the notification.
-- Camera upkeep (case #58): "Camera upkeep — fleet self-check"
+- Camera upkeep: "Camera upkeep — fleet self-check"
   reads the staged camera history in the fixtures and produces
   the turnover notes the evidence supports: Garden Unit 1A's
   front-door camera went offline around 7 AM on three days
@@ -274,7 +275,7 @@ Driving it on the page:
   the lens" twice over). 1A's backyard camera is staged below
   every threshold and earns no note. The report goes to the
   operator only; nothing is sent to a guest or a cleaner.
-- Vendor proof of service (case #23, batch 3): "Vendor proof of
+- Vendor proof of service: "Vendor proof of
   service — worker on camera inside the stated window" opens a run
   on the vendor's stated 10 AM–noon window at Maple Street House
   (closed that day), then delivers the scheduled close. Frame f6
@@ -289,7 +290,7 @@ Driving it on the page:
   was seen inside the stated window — the absence of a sighting,
   not proof the visit did not happen. Frames that cannot be read
   are never sightings; a window with no frames says so plainly.
-- Move-in signs (case #55, batch 3): "Camera motion — boxes carried
+- Move-in signs: "Camera motion — boxes carried
   in on a third day" sends Jordan's long stay at Studio 2A in
   order: f29 (arrival-day suitcases — the carrying field reads
   luggage, which never counts), then f30, f31, f32 — boxes or
