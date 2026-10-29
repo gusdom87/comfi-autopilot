@@ -36,3 +36,24 @@ def test_mock_run_end_to_end(tmp_path):
     assert (out / "scorecard.md").exists() and (out / "results.jsonl").exists()
     stats = json.loads((out / "stats.json").read_text())
     assert stats["n"] == 5
+
+
+def test_mock_run_open_escalate_records_policy_and_models(tmp_path):
+    ds = tmp_path / "ds.jsonl"
+    recs = [
+        {"message_preview": "There is a leak under the sink", "ground_truth": "Act", "property": "PROP_01"},
+        {"message_preview": "Can we bring a second car?", "ground_truth": "Confirm", "property": "PROP_02"},
+    ]
+    ds.write_text("\n".join(json.dumps(r) for r in recs))
+    out = tmp_path / "out"
+    repo = os.path.join(os.path.dirname(__file__), "..")
+    open_model = "meta-models/muse-spark-open-1026"
+    env = {**os.environ, "BASETEN_MODEL_OPEN": open_model, "META_MODEL_TIER_DEEP": "muse-wonder-1.0"}
+    r = subprocess.run([sys.executable, os.path.join(repo, "eval", "run_eval.py"),
+                        "--dataset", str(ds), "--policy", "open_escalate", "--mock",
+                        "--out", str(out)], capture_output=True, text=True, env=env)
+    assert r.returncode == 0, r.stderr
+    assert "# Scorecard — open_escalate" in (out / "scorecard.md").read_text()
+    rows = [json.loads(l) for l in (out / "results.jsonl").read_text().splitlines()]
+    assert rows[0]["tier_path"] == open_model                          # 0.9 stands
+    assert rows[1]["tier_path"] == open_model + " -> muse-wonder-1.0"  # 0.6 escalates

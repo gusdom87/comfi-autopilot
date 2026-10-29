@@ -3,11 +3,14 @@
   wonder_only - deep tier decides and drafts
   escalate    - fast tier decides; below the confidence threshold the deep
                 tier re-decides and drafts
+  open_escalate - escalate with Muse Spark Open (Baseten) as the first pass
+                and the deep tier (Meta API) as the escalation tier
 Every path fails safe: no usable model output -> FAIL_SAFE (Confirm).
 """
 import os
 from dataclasses import replace
 
+from .baseten_client import BasetenClient
 from .client import MetaModelClient
 from .config import Config
 from .parse import extract_text, parse_decision, usage_cost
@@ -21,6 +24,24 @@ ESCALATION_THRESHOLD = 0.75
 def _guard(config: Config) -> SpendGuard:
     path = os.environ.get("JEV_SPEND_STATE", ".decision-log/spend.json")
     return SpendGuard(path, config.daily_spend_cap_usd)
+
+
+class TierClients:
+    """Sends each call to the API that serves its model: the open tier
+    (config.tier_open) goes to Baseten, every other tier to the Meta API.
+    An injected client serves the Meta tiers exactly as before; open_client
+    overrides the open tier (eval cache, tests)."""
+
+    def __init__(self, config: Config, client=None, open_client=None):
+        self.config = config
+        self.meta = client or MetaModelClient(config)
+        self.open = open_client or BasetenClient(config)
+
+    def for_model(self, model: str):
+        return self.open if model == self.config.tier_open else self.meta
+
+    def complete(self, model, system, user):
+        return self.for_model(model).complete(model, system, user)
 
 
 def _call(client, guard, model, system, user):
@@ -53,9 +74,10 @@ def _draft(client, guard, model, decision, message, context, spent):
     return decision
 
 
-def decide(policy: str, message: str, context: dict, client=None, examples=None) -> Decision:
+def decide(policy: str, message: str, context: dict, client=None, examples=None,
+           open_client=None) -> Decision:
     config = Config.from_env()
-    client = client or MetaModelClient(config)
+    client = TierClients(config, client, open_client)
     guard = _guard(config)
     examples = examples or []
     user = build_triage_user(message, context, examples)
@@ -72,22 +94,24 @@ def decide(policy: str, message: str, context: dict, client=None, examples=None)
             return FAIL_SAFE
         return _draft(client, guard, config.tier_deep, d, message, context, spent)
 
-    if policy == "escalate":
-        d, spent = _call(client, guard, config.tier_fast, TRIAGE_SYSTEM, user)
+    if policy in ("escalate", "open_escalate"):
+        # Identical ladders; only the first-pass model differs.
+        first = config.tier_open if policy == "open_escalate" else config.tier_fast
+        d, spent = _call(client, guard, first, TRIAGE_SYSTEM, user)
         if d is None:
             return FAIL_SAFE
         if d.confidence >= ESCALATION_THRESHOLD:
-            d.tier_path = config.tier_fast
-            return _draft(client, guard, config.tier_fast, d, message, context, spent)
+            d.tier_path = first
+            return _draft(client, guard, first, d, message, context, spent)
         d2, spent2 = _call(client, guard, config.tier_deep, TRIAGE_SYSTEM, user)
         if d2 is None:
-            # The fast verdict was already judged too uncertain to stand
-            # alone, so it is not handed back as the decision: fail safe,
-            # keeping the honest tier path and what the fast call cost.
+            # The first-pass verdict was already judged too uncertain to
+            # stand alone, so it is not handed back as the decision: fail
+            # safe, keeping the honest tier path and what that call cost.
             return replace(FAIL_SAFE,
-                           tier_path=config.tier_fast + " (escalation failed; fail-safe)",
+                           tier_path=first + " (escalation failed; fail-safe)",
                            cost_usd=spent)
-        d2.tier_path = config.tier_fast + " -> " + config.tier_deep
+        d2.tier_path = first + " -> " + config.tier_deep
         d2.cost_usd = spent + spent2
         return _draft(client, guard, config.tier_deep, d2, message, context, spent + spent2)
 
