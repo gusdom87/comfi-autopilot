@@ -19,7 +19,7 @@ What it operates:
 
 ## How Jev fits
 
-Jev is not this product. The urgency call on each message is made by the triage layer in this repo, a hackathon-built port of the operator's Jev pipeline (TypeSafe AI) to Muse Spark/Wonder; Jev's original tool, the hand-labeled dataset, and the Oct 7–14 pilot are pre-existing. The operator taught the triage layer his operation's judgment by hand-labeling roughly 300 real guest messages himself. Comfi Autopilot is everything around that decision: the connection to the booking data, the plays that turn a decision into coordinated work, and the autonomy ladder that decides what the system may do with it.
+Jev is not this product. The urgency call on each message is made by the triage layer in this repo, a hackathon-built port of the operator's Jev pipeline (TypeSafe AI) to Muse Spark/Wonder; Jev's original tool, the hand-labeled dataset, and the Oct 7–14 pilot are pre-existing. The standard the triage layer is measured against is the operator's own judgment, recorded by hand: a pilot set of roughly 300 real guest messages he labeled himself, from which the graded eval set is drawn. Nothing here is trained; the models are prompted, and the graded record is what they answer to. Comfi Autopilot is everything around that decision: the connection to the booking data, the plays that turn a decision into coordinated work, and the autonomy ladder that decides what the system may do with it.
 
 ## Graduated autonomy
 
