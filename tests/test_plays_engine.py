@@ -144,7 +144,9 @@ def test_triage_decision_fires_play_end_to_end_offline():
     client = _FakeClient([verdict, "draft not used by the play"])
     d = decide("escalate", "Can we check in at 1pm today?",
                {"property": "cedar-1a"}, client=client)
-    assert d.category is Category.ACT
+    # The model said Act; an early check-in is a stay change, so the
+    # guard holds it at Confirm. The play fires on Confirm all the same.
+    assert d.category is Category.CONFIRM
     play = match(d, "Can we check in at 1pm today?", {})
     assert play is not None
     run = _engine().start(play, d, "Can we check in at 1pm today?",

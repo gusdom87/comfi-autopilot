@@ -8,10 +8,12 @@ implementations:
   turnovers, cleaner assignments, typical durations). This is what the
   demo and the tests run on.
 - LiveTurnoReadAdapter: STUB, intentionally not wired. Turno's API is
-  read-only and the operator's Turno account is worked through the web
-  UI, so there is no supported live-read path for the demo. The class
-  exists so the wiring point is explicit and labeled, and every method
-  raises until a real read path is approved.
+  not read-only: on Oct 29, 2026 a project time change was made through
+  it on a real project (PATCH), read back, and restored. Cleaner notes
+  are still web-UI only. Nothing in this repo calls Turno, so there is
+  no live-read path for the demo. The class exists so the wiring point
+  is explicit and labeled, and every method raises until a real read
+  path is approved.
 """
 from dataclasses import dataclass
 from typing import Protocol
@@ -372,10 +374,12 @@ class FixtureContext:
 class LiveTurnoReadAdapter:
     """STUB — NOT WIRED, DO NOT USE IN THE DEMO.
 
-    Turno's API is read-only and the operator's account access is via
-    the web UI; there is no approved live-read path yet. This adapter
-    marks exactly where live reads would plug in once one exists. Every
-    method raises so nothing can silently pretend to have live data.
+    Turno's API is not read-only (Oct 29, 2026: a project time change
+    was made through it on a real project, read back, and restored;
+    cleaner notes are still web-UI only), but this repo wires no Turno
+    path and none is approved yet. This adapter marks exactly where live
+    reads would plug in once one exists. Every method raises so nothing
+    can silently pretend to have live data.
     """
 
     def _stub(self):

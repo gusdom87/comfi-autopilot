@@ -6,11 +6,14 @@
   open_escalate - escalate with Muse Spark Open (Baseten) as the first pass
                 and the deep tier (Meta API) as the escalation tier
 Every path fails safe: no usable model output -> FAIL_SAFE (Confirm).
+Every verdict then passes the stay-change / money guard (change_guard):
+a money or stay-change message comes back Confirm, in code.
 """
 import os
 from dataclasses import replace
 
 from .baseten_client import BasetenClient
+from .change_guard import apply_guard
 from .client import MetaModelClient
 from .config import Config
 from .parse import extract_text, parse_decision, usage_cost
@@ -76,6 +79,15 @@ def _draft(client, guard, model, decision, message, context, spent):
 
 def decide(policy: str, message: str, context: dict, client=None, examples=None,
            open_client=None) -> Decision:
+    """The ladder's verdict, capped by the stay-change / money guard. The
+    guard runs on the output only: prompts and model calls are the
+    ladder's, unchanged."""
+    return apply_guard(_ladder(policy, message, context, client, examples,
+                               open_client), message)
+
+
+def _ladder(policy: str, message: str, context: dict, client=None, examples=None,
+            open_client=None) -> Decision:
     config = Config.from_env()
     client = TierClients(config, client, open_client)
     guard = _guard(config)
