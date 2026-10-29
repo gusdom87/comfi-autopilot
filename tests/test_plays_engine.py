@@ -52,33 +52,42 @@ def test_gate_holds_charge_by_default_and_logs_it(tmp_path):
     assert records[-1]["event"] == "run_completed"
 
 
-def test_earned_right_executes_charge_simulated():
-    ledger = {"categories": {"charge_guest": {
-        "decisive_n": 80, "decisive_accuracy": 0.98,
-        "high_conf_accuracy": 0.99}}}
+def test_earned_right_executes_simulated_but_charge_stays_held():
+    earned = {"decisive_n": 80, "decisive_accuracy": 0.98,
+              "high_conf_accuracy": 0.99}
+    ledger = {"categories": {"message_guest": dict(earned),
+                             "charge_guest": dict(earned)}}
     run = _engine(ledger=ledger).start(
         get("early_checkin"), Decision(Category.ACT, 0.9),
         "Can we check in at 1pm?", "cedar-1a", "2026-10-28")
+    reply = next(s for s in run.steps if s.name == "guest_reply")
+    assert reply.required_right == "send_with_spotcheck"
+    assert reply.disposition == "execute" and reply.status == "done"
+    assert reply.result["executed"] is True
+    assert reply.result["channel"] == "simulated"
+    # Charging a guest is never on the ladder: earned stats or not,
+    # the charge waits for a human.
     charge = next(s for s in run.steps if s.name == "early_checkin_charge")
-    assert charge.required_right == "send_with_spotcheck"
-    assert charge.disposition == "execute" and charge.status == "done"
-    assert charge.result["executed"] is True
-    assert charge.result["channel"] == "simulated"
+    assert charge.required_right == "approve_first"
+    assert charge.disposition == "hold" and charge.status == "held"
+    assert charge.result["executed"] is False
 
 
 def test_low_confidence_decision_holds_despite_earned_right():
     # The right is earned on aggregate stats; this one decision sits
     # below the per-decision floor, so the gate holds it anyway.
-    ledger = {"categories": {"charge_guest": {
+    # (message_guest, not charge_guest: charging never earns a right, so
+    # it would hold here whatever the floor did.)
+    ledger = {"categories": {"message_guest": {
         "decisive_n": 80, "decisive_accuracy": 0.98,
         "high_conf_accuracy": 0.99}}}
     run = _engine(ledger=ledger).start(
         get("early_checkin"), Decision(Category.ACT, 0.6),
         "Can we check in at 1pm?", "cedar-1a", "2026-10-28")
-    charge = next(s for s in run.steps if s.name == "early_checkin_charge")
-    assert charge.required_right == "approve_first"
-    assert charge.disposition == "hold" and charge.status == "held"
-    assert charge.result["executed"] is False
+    reply = next(s for s in run.steps if s.name == "guest_reply")
+    assert reply.required_right == "approve_first"
+    assert reply.disposition == "hold" and reply.status == "held"
+    assert reply.result["executed"] is False
 
 
 def test_unknown_property_fails_safe_to_human():

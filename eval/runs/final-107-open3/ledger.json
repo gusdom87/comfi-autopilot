@@ -1,0 +1,28 @@
+{
+ "categories": {
+  "Confirm": {
+   "n": 48,
+   "accuracy": 0.6458333333333334,
+   "decisive_n": 0,
+   "decisive_accuracy": 0.0,
+   "high_conf_n": 36,
+   "high_conf_accuracy": 0.6944444444444444
+  },
+  "Act": {
+   "n": 16,
+   "accuracy": 1.0,
+   "decisive_n": 16,
+   "decisive_accuracy": 1.0,
+   "high_conf_n": 13,
+   "high_conf_accuracy": 1.0
+  },
+  "Ignore": {
+   "n": 37,
+   "accuracy": 0.7567567567567568,
+   "decisive_n": 37,
+   "decisive_accuracy": 0.7567567567567568,
+   "high_conf_n": 35,
+   "high_conf_accuracy": 0.7428571428571429
+  }
+ }
+}

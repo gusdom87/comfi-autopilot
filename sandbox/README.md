@@ -28,9 +28,11 @@ The live plays run end to end on the staged fixture world
 (jev.plays.default_fixture_data: three properties on 2026-10-28, one
 per early check-in outcome, plus the cleaner-done records and one
 mid-stay record for the camera play). Play runs are kept in memory
-server-side; the sandbox engine's autonomy ledger is empty, so every
-action right is P1 (approve_first) — steps produce their drafts and
-are HELD at the gate, which is the point of the demo. Nothing is
+server-side; the sandbox reads the graded eval ledger (the run of
+record, eval/runs/final-107-live/ledger.json), and no category has
+cleared the ladder, so every action still resolves to approve-first
+(P1, approve_first) — steps produce their drafts and are HELD at the
+gate, which is the point of the demo. Nothing is
 really sent or charged; any step that ever executes does so through
 the simulated channel and is labeled simulated.
 

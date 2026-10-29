@@ -514,7 +514,8 @@
     <section id="plays" class="plays" aria-labelledby="h-plays">
       <div class="sec-head"><h2 class="display sec-title" id="h-plays"><span class="sec-s ic ic-plays" aria-hidden="true"></span>Plays</h2><p class="sec-deck">The operation at work</p></div>
       <!-- Gate column: the real P1 wording only. Triage returns a send right of approve_first;
-           every play's action steps come back held (sandbox ledger empty, see sandbox/README.md). -->
+           every play's action steps come back held (the sandbox reads the graded eval ledger, run of record;
+           no category has cleared the ladder, so every action still resolves to approve-first, P1; see sandbox/README.md). -->
       <div class="panel spec-sheet">
         <table class="spec" aria-label="Plays: the operation at work">
           <thead><tr><th scope="col" aria-label="Play mark"></th><th scope="col">Play</th><th scope="col">Description</th><th scope="col" class="spec-gate">Gate</th></tr></thead>

@@ -25,6 +25,15 @@ from jev.tiers import decide as _decide  # noqa: E402
 from jev.types import FAIL_SAFE  # noqa: E402
 
 HERE = os.path.dirname(__file__)
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# The run of record's graded eval ledger: the sandbox's default book
+# when neither a ledger_path argument nor JEV_LEDGER is given.
+DEFAULT_LEDGER = os.path.join(ROOT, "eval", "runs", "final-107-live",
+                              "ledger.json")
+
+
+def _ledger_path(ledger_path: str = "") -> str:
+    return ledger_path or os.environ.get("JEV_LEDGER", "") or DEFAULT_LEDGER
 
 
 def handle_triage(payload: dict, decide_fn=_decide, ledger_path: str = "") -> dict:
@@ -33,7 +42,7 @@ def handle_triage(payload: dict, decide_fn=_decide, ledger_path: str = "") -> di
         return {"error": "empty message"}
     context = {"property": str(payload.get("property", ""))}
     d = decide_fn("escalate", message, context)
-    ledger = load_ledger(ledger_path or os.environ.get("JEV_LEDGER", ""))
+    ledger = load_ledger(_ledger_path(ledger_path))
     return {
         "category": d.category.value,
         "confidence": d.confidence,
@@ -49,10 +58,13 @@ def handle_triage(payload: dict, decide_fn=_decide, ledger_path: str = "") -> di
 
 # -- plays -------------------------------------------------------------
 # One engine over the staged fixture world, shared by every request.
-# The autonomy ledger is empty here, so every action right is P1
-# (approve_first): drafts are produced and steps are HELD, exactly
-# what the demo needs to show. Runs are kept in memory by run_id.
-ENGINE = PlayEngine(FixtureContext(default_fixture_data()))
+# It reads the same graded eval ledger (run of record) as triage. No
+# category has cleared the ladder and the play action keys carry no
+# graded stats, so every action right is P1 (approve_first): drafts
+# are produced and steps are HELD, exactly what the demo needs to
+# show. Runs are kept in memory by run_id.
+ENGINE = PlayEngine(FixtureContext(default_fixture_data()),
+                    ledger=load_ledger(_ledger_path()))
 RUNS: dict = {}
 
 

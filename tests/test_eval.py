@@ -1,5 +1,6 @@
 import json, os, subprocess, sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "eval"))
+from ledger import build_ledger
 from scoring import score_rows
 
 
@@ -15,6 +16,37 @@ def test_scoring_math():
     assert s["decisive_n"] == 3 and abs(s["decisive_accuracy"] - 2 / 3) < 1e-9
     assert s["high_conf_n"] == 4 and abs(s["high_conf_accuracy"] - 0.5) < 1e-9
     assert s["confusion"]["Act"]["Confirm"] == 1 and s["confusion"]["Ignore"]["Act"] == 1
+
+
+def test_ledger_groups_by_predicted_category():
+    # A true Act the system called Ignore is a wrong Ignore call: it
+    # counts against Ignore's precision and never appears under Act.
+    cats = build_ledger([row("Act", "Ignore")])["categories"]
+    assert cats["Ignore"]["n"] == 1 and cats["Ignore"]["decisive_n"] == 1
+    assert cats["Ignore"]["accuracy"] == 0.0
+    assert cats["Ignore"]["decisive_accuracy"] == 0.0
+    assert cats["Act"]["n"] == 0 and cats["Act"]["decisive_n"] == 0
+
+
+def test_ledger_stats_are_precision_within_the_call():
+    rows = [row("Act", "Act", 0.9), row("Act", "Act", 0.7), row("Confirm", "Act", 0.95),
+            row("Ignore", "Ignore", 0.9), row("Act", "Ignore", 0.9),
+            row("Confirm", "Confirm", 0.9), row("Act", "Confirm", 0.6)]
+    cats = build_ledger(rows)["categories"]
+    act = cats["Act"]
+    assert act["n"] == 3 and act["decisive_n"] == 3
+    assert abs(act["accuracy"] - 2 / 3) < 1e-9 and abs(act["decisive_accuracy"] - 2 / 3) < 1e-9
+    assert act["high_conf_n"] == 2 and abs(act["high_conf_accuracy"] - 0.5) < 1e-9
+    ign = cats["Ignore"]
+    assert ign["n"] == 2 and ign["decisive_n"] == 2 and abs(ign["decisive_accuracy"] - 0.5) < 1e-9
+    assert ign["high_conf_n"] == 2 and abs(ign["high_conf_accuracy"] - 0.5) < 1e-9
+    # Confirm defers to a human, so it never has decisive rows.
+    con = cats["Confirm"]
+    assert con["n"] == 2 and abs(con["accuracy"] - 0.5) < 1e-9
+    assert con["decisive_n"] == 0 and con["decisive_accuracy"] == 0.0
+    assert con["high_conf_n"] == 1 and con["high_conf_accuracy"] == 1.0
+    assert set(act) == {"n", "accuracy", "decisive_n", "decisive_accuracy",
+                        "high_conf_n", "high_conf_accuracy"}
 
 
 def test_mock_run_end_to_end(tmp_path):

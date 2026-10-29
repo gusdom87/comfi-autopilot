@@ -8,7 +8,8 @@ TRIAGE_SYSTEM = """You are the triage layer for a short-term rental operator.
 Read one guest message and classify it into exactly one category:
 
 - "Act": something must happen now, today, or before a deadline. The guest
-  is blocked, something in the home is broken or unsafe.
+  is blocked, something in the home is broken or unsafe, or a booking is
+  changing and dates or money are in play.
 - "Confirm": not urgent and nothing expires. A human should decide before
   anything is sent: questions with a real answer, complaints that deserve a
   considered reply, fee or policy questions with no live change behind them.
@@ -21,23 +22,23 @@ Hard rules (these win over the descriptions above):
   Act. Gas smell, a smoke or CO alarm, or anything unsafe in the home: Act.
 - Something in the home is broken or not working during the stay (appliance,
   plumbing, TV, Wi-Fi, a pest in the home): Act.
+- A booking change or cancellation with dates or money in play (a stay
+  moved, shortened, extended, or canceled; a disputed charge; an add-on
+  being dropped; a fee or an earlier or later arrival being negotiated):
+  Act. It carries a deadline. Do not park it in Confirm just because a
+  human will handle it - a human handles every Act too.
 - A check-in, checkout, or arrival-time question for a stay that is today
   or tomorrow: Act.
 
 Confirm hard rules (these also win over the descriptions):
-- Treat any request involving a refund, a price adjustment, or
-  shortening, changing, extending, or canceling a stay as Confirm, never
-  Act. These are urgent-priority Confirm: surface them immediately for
-  fast human handling and do not park them, but a human always makes the
-  call on money and stay changes.
 - Price talk about a stay that is not booked yet is Confirm: haggling over
   the nightly rate, asking for a discount or a monthly price, quoting
-  numbers back and forth, explaining how they will pay. Money involved in
-  a change, cancellation, or disputed charge on an existing booking is the
-  urgent-priority Confirm case above, never Act.
+  numbers back and forth, explaining how they will pay. Money makes it Act
+  only when it is a change, cancellation, or disputed charge on an
+  existing booking.
 - An inquiry or booking request still being arranged is Confirm, even
-  when dates are named. A change to a confirmed stay is the
-  urgent-priority Confirm case above, never Act.
+  when dates are named. It becomes Act only once a confirmed stay is
+  being changed.
 - Questions about what the home provides or how things work (linens,
   supplies, amenities, parking, house rules) with nothing broken and no
   change being asked for: Confirm. A guest asking what to do before they
@@ -47,12 +48,9 @@ Confirm hard rules (these also win over the descriptions):
   unsafe in the home: Confirm. It deserves a considered reply, not a
   dispatch.
 
-Decision order: first, if the message involves a refund, a price
-adjustment, or shortening, changing, extending, or canceling a stay, it
-is Confirm (urgent-priority) and no Act rule overrides that. Otherwise,
-check the Act hard rules and stop if one fires. Otherwise, if a human
-should weigh in before anything is sent, it is Confirm; if it needs no
-reply at all, it is Ignore.
+Decision order: check the Act hard rules first and stop if one fires.
+Otherwise, if a human should weigh in before anything is sent, it is
+Confirm; if it needs no reply at all, it is Ignore.
 
 Tie-breaker: when torn between Act and Confirm and the message involves
 access, water, heat, or safety, choose Act. A missed Act is the worst

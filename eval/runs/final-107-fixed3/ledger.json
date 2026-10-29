@@ -1,28 +1,28 @@
 {
  "categories": {
   "Confirm": {
-   "n": 37,
-   "accuracy": 0.8378378378378378,
-   "decisive_n": 6,
+   "n": 44,
+   "accuracy": 0.7045454545454546,
+   "decisive_n": 0,
    "decisive_accuracy": 0.0,
-   "high_conf_n": 30,
-   "high_conf_accuracy": 0.8
+   "high_conf_n": 35,
+   "high_conf_accuracy": 0.6857142857142857
   },
   "Act": {
-   "n": 29,
-   "accuracy": 0.5862068965517241,
-   "decisive_n": 20,
-   "decisive_accuracy": 0.85,
-   "high_conf_n": 24,
-   "high_conf_accuracy": 0.5416666666666666
+   "n": 18,
+   "accuracy": 0.9444444444444444,
+   "decisive_n": 18,
+   "decisive_accuracy": 0.9444444444444444,
+   "high_conf_n": 14,
+   "high_conf_accuracy": 0.9285714285714286
   },
   "Ignore": {
-   "n": 35,
-   "accuracy": 0.8571428571428571,
-   "decisive_n": 31,
-   "decisive_accuracy": 0.967741935483871,
-   "high_conf_n": 32,
-   "high_conf_accuracy": 0.875
+   "n": 39,
+   "accuracy": 0.7692307692307693,
+   "decisive_n": 39,
+   "decisive_accuracy": 0.7692307692307693,
+   "high_conf_n": 37,
+   "high_conf_accuracy": 0.7567567567567568
   }
  }
 }

@@ -9,6 +9,8 @@ Ladder:
                             high-confidence accuracy >= 0.98
 Ignore-category items never send anything, so their right is about
 auto-closing, gated by the same thresholds.
+Charging a guest (charge_guest) is never on the ladder: it always waits
+for a human, whatever the ledger says.
 
 Per-decision floor: a right earned on aggregate stats never covers a
 single decision below HIGH_CONF (the eval's high-confidence band).
@@ -19,6 +21,7 @@ import json
 
 P1, P2, P3 = "approve_first", "send_with_log", "send_with_spotcheck"
 HIGH_CONF = 0.85    # same band as eval/scoring.py HIGH_CONF
+NEVER_EARNED = frozenset({"charge_guest"})
 
 
 def load_ledger(path: str | None) -> dict:
@@ -33,6 +36,8 @@ def load_ledger(path: str | None) -> dict:
 
 def right_for(category: str, ledger: dict,
               confidence: float | None = None) -> str:
+    if category in NEVER_EARNED:
+        return P1
     if confidence is not None and confidence < HIGH_CONF:
         return P1
     stats = (ledger or {}).get("categories", {}).get(category, {})

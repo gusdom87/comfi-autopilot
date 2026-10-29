@@ -8,7 +8,8 @@ from dataclasses import dataclass
 class PlaysConfig:
     # Early check-in fee charged to the guest when an early arrival is
     # granted (play: early_checkin). Charging is the highest-stakes action
-    # in the ladder: always held for a human until the right is earned.
+    # in the ladder: always held for a human. Charging a guest is never
+    # on the autonomy ladder, at any level.
     early_checkin_fee_usd: float = 25.0
     # If the unit's expected ready time misses the guest's requested time
     # by no more than this many minutes, the play goes conditional (ask
@@ -17,8 +18,8 @@ class PlaysConfig:
     # Late checkout (play: late_checkout). Up to this many minutes past
     # standard checkout is free - the operator's standing rule is "up to
     # one hour free". Past it, the fee below applies as its own
-    # charge_guest step: highest right, held for a human until earned,
-    # exactly like the early check-in fee. The amount has no default:
+    # charge_guest step: held for a human always, exactly like the early
+    # check-in fee; charging is never on the ladder. The amount has no default:
     # None (JEV_LATE_CHECKOUT_FEE_USD unset) means the operator sets it,
     # and the step is drafted with the amount to be set.
     late_checkout_free_minutes: int = 60

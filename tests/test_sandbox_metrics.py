@@ -31,6 +31,27 @@ def test_sandbox_triage_low_confidence_gets_approve_first(tmp_path):
     out = srv.handle_triage({"message": "ok"}, decide_fn=lambda p, m, c: high, ledger_path=str(ledger))
     assert out["autonomy_right"] == "send_with_log"
 
+def test_sandbox_defaults_to_run_of_record_ledger(monkeypatch):
+    monkeypatch.delenv("JEV_LEDGER", raising=False)
+    srv = load_mod("sandbox_server", "sandbox/server.py")
+    from jev.autonomy import load_ledger, right_for
+    from jev.plays.engine import STAKES
+    from jev.types import Decision, Category
+    record = os.path.join(ROOT, "eval", "runs", "final-107-live", "ledger.json")
+    assert os.path.samefile(srv._ledger_path(), record)
+    ledger = load_ledger(record)
+    assert set(ledger["categories"]) == {"Confirm", "Act", "Ignore"}
+    assert srv.ENGINE.ledger == ledger
+    # No category has cleared the ladder: every right is still P1.
+    for cat in Category:
+        for conf in (None, 0.85, 1.0):
+            assert right_for(cat.value, ledger, conf) == "approve_first"
+        d = Decision(cat, 0.99, reason="r", tier_path="m")
+        out = srv.handle_triage({"message": "ok"}, decide_fn=lambda p, m, c: d)
+        assert out["autonomy_right"] == "approve_first"
+    for key in STAKES:
+        assert right_for(key, ledger, 1.0) == "approve_first"
+
 def test_metrics_math(tmp_path):
     met = load_mod("outcome_metrics", "metrics/outcome_metrics.py")
     path = tmp_path / "w.csv"

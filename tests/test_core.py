@@ -80,3 +80,24 @@ def test_autonomy_floor_holds_low_confidence_decisions():
     assert right_for("Ignore", led, 0.84) == "approve_first"
     assert right_for("Ignore", led, 0.85) == "send_with_spotcheck"
     assert right_for("Ignore", led) == "send_with_spotcheck"
+
+
+def _p3_for_every_key():
+    p3 = {"decisive_n": 200, "decisive_accuracy": 1.0, "high_conf_accuracy": 1.0}
+    keys = ("Act", "Confirm", "Ignore", "auto_close", "message_guest",
+            "message_cleaner", "dispatch_vendor", "notify_operator", "charge_guest")
+    return {"categories": {k: dict(p3) for k in keys}}
+
+
+def test_charge_guest_is_never_earned():
+    led = _p3_for_every_key()
+    # Stats that earn P3 anywhere else still leave charging a guest at P1.
+    assert right_for("charge_guest", led) == "approve_first"
+    assert right_for("charge_guest", led, 0.99) == "approve_first"
+    assert right_for("charge_guest", led, 1.0) == "approve_first"
+
+
+def test_charge_guest_lock_is_key_specific():
+    led = _p3_for_every_key()
+    assert right_for("message_guest", led) == "send_with_spotcheck"
+    assert right_for("message_guest", led, 0.99) == "send_with_spotcheck"
