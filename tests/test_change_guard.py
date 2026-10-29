@@ -55,6 +55,8 @@ GUARDED = [
     ("Could we check in early? Our flight lands in the morning.", "stay change: early check-in"),
     ("Would it be ok to check in at 1pm?", "stay change: early check-in"),
     ("We'd like to add another night if it's open.", "stay change: extension"),
+    ("Running behind on packing, could we get one more hour?", "stay change: extra time"),
+    ("¿Nos puede dar una hora más?", "stay change: stay change, Spanish"),
     ("We need to shorten our stay by two nights.", "stay change: dates or length"),
     ("Is it possible to change our dates to the following weekend?", "stay change: dates or length"),
     ("We have to cancel the reservation, sorry.", "stay change: cancellation"),

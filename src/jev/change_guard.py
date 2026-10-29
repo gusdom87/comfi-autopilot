@@ -3,7 +3,8 @@ Phase 0, item 0a). Deterministic code on the model's output, never a
 prompt instruction: the model does not see it and cannot argue past it.
 
 A guest message that asks to change a stay (a later checkout, an
-earlier check-in, an extra or dropped night, new dates, a cancellation)
+earlier check-in, an extra hour, an extra or dropped night, new dates,
+a cancellation)
 or that puts money in play (a refund, a discount or price, a fee or a
 charge, a deposit or claim, a dollar amount) is held for the operator:
 an Act or Ignore verdict on it comes back as Confirm, whatever the
@@ -79,12 +80,18 @@ _STAY_CHANGE = [
         r"earl(?:y|ier)\b"
         r"|\bcut\s+(?:our|my|the)\s+(?:stay|trip)\s+short\b", re.I)),
     ("extension", _EXTENSION_RE),
+    # The extension pattern's shape, for hours ("the extra hour", "two
+    # more hours"): asking for more time moves a checkout or an arrival.
+    ("extra time", re.compile(
+        r"\b(?:another|extra|additional|\w+\s+more|more|few\s+more)\s+"
+        r"hours?\b", re.I)),
     ("stay change, Spanish", re.compile(
         r"\b(?:salida|salir|check[\s-]?out)\s+(?:un\s+poco\s+)?(?:mas\s+)?"
         r"tarde\b"
         r"|\b(?:entrada|llegada|llegar|entrar|check[\s-]?in)\s+"
         r"(?:un\s+poco\s+)?(?:mas\s+)?temprano\b"
-        r"|\b(?:una|otra|dos|tres|\d)\s+noches?\s+mas\b|\botra\s+noche\b"
+        r"|\b(?:una|otra|dos|tres|\d)\s+(?:noche|hora)s?\s+mas\b"
+        r"|\botra\s+(?:noche|hora)\b"
         r"|\b(?:extender|alargar|ampliar|acortar|cambiar|mover)\s+"
         r"(?:(?:la|las|mi|mis|nuestra|nuestras)\s+)?"
         r"(?:fechas?|reserva\w*|estancia|estadia)\b", re.I)),
