@@ -461,7 +461,10 @@
          has earned so far. The urgency decision is made by the triage layer in
          this repo, a hackathon-built port of the operator's Jev pipeline (TypeSafe
          AI) to Muse Spark/Wonder; Jev's original tool, the hand-labeled dataset,
-         and the Oct 7–14 pilot are pre-existing.</p>
+         and the Oct 7–14 pilot are pre-existing. The system runs on Meta's models:
+         Muse Spark 1.3 for the fast first call, Muse Wonder 1.0 when confidence is
+         low, and Muse Spark Open (open weights, served by Baseten) measured in the
+         same seat.</p>
     </header>
 
     <section id="triage" class="triage" aria-labelledby="h-triage">
@@ -651,43 +654,22 @@
       <article class="play panel" aria-labelledby="h-cam">
       <div class="play-head"><span class="num ic ic-cameras" aria-hidden="true"></span><h3 id="h-cam">Play: camera check</h3></div>
       <div class="cam-desc">
-      <p>An outside camera reports motion — no message from anyone. Comfi Autopilot classifies
-         the staged frame, checks it against the staged calendar, and either logs it
-         (the guest who was expected, the cleaner who was scheduled, nothing of note)
-         or flags the <strong>operator</strong> (a crowd bigger than the booking, a
-         person nobody expected, a frame too dark to judge). The motion play never
-         messages a guest. Two Tier-1 extensions ride the same rails: a camera that
-         goes <strong>offline</strong> during a stay, on a switch the guest controls,
-         drafts the camera system's one guest message — held at the gate, in the
-         operator's chosen wording — and a house marked <strong>closed</strong> flips
-         the expectation, so any person flags the operator with the frame still
-         attached. A post-turnover check reads the door and lights state of the
-         emptied home. The final-list batch rides the same rails: a
-         <strong>covered or turned</strong> camera flags the operator whatever the
-         scene (urgent on a one-night weekend stay), a person stuck at a shut door
-         across two frames flags the operator with the door state, a
-         <strong>lockout report</strong> hands the operator the latest door frame,
-         a guest who <strong>feels unsafe</strong> gets the latest frames to the
-         operator urgently, and a <strong>sunset check</strong> reads the entry
-         lights before an arriving guest does. Batch 2 rides the same rails: a
-         <strong>dog arriving with the party</strong> when the booking lists no
-         pet flags the operator with the still (nothing is charged; the call is
-         the operator's), a <strong>morning check</strong> reads the snow at an
-         empty home, cameras <strong>dropping together</strong> across
-         properties collapse into one area-outage notification, and a periodic
-         <strong>upkeep check</strong> turns the fleet's own history into
-         turnover notes (check the WiFi, wipe the lens). Batch 3 rides the same
-         rails: a <strong>gathering</strong> no longer fires on one frame — the
-         people estimates accumulate across the stay, and the operator hears only
-         when a sustained floor clears the booked party by a wide margin, worded
-         as &ldquo;at least N people (model estimate)&rdquo;; a vendor's stated
-         arrival window gets <strong>proof of service</strong> — a worker on
-         camera inside the window is logged with the frame, and a window that
-         closes with nobody seen goes to the operator, presence only and never a
-         word about the work; and boxes carried in on three distinct days of one
-         stay raise one awareness-only note: <strong>signs consistent with a
-         possible move-in</strong>. The frames are staged metadata, not real
-         photos.</p>
+      <p>Outside cameras report on their own, with no message from anyone. Motion
+         never triggers a message to a guest: the expected guest or the scheduled
+         cleaner is logged, and anything unexpected goes to the
+         <strong>operator</strong>. The same checks cover the harder cases an
+         operator actually sees: a camera that goes offline on a light switch the
+         guest controls (the one case that drafts a guest message, held for
+         approval), a person at a house marked closed, the door and lights after a
+         turnover, a covered or turned camera, a guest locked out or stuck at the
+         door, a guest who reports feeling unsafe, a dark entry at sunset, a dog
+         when the booking lists no pet, snow at an empty home, several cameras
+         dropping at once (one area-outage alert instead of one per camera), a
+         periodic upkeep check that turns camera history into turnover notes, a
+         vendor's arrival window checked for proof of service, a gathering that
+         grows well past the booked party, and signs of a possible move-in. In the
+         live path Muse Spark reads each frame; here the frames are staged examples
+         with their labels attached.</p>
       </div>
       <div class="cam-grid">
         <div class="cam-cards scenarios">
