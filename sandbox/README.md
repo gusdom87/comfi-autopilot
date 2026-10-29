@@ -16,6 +16,12 @@ Then open http://127.0.0.1:8791. The API key comes from the server
 environment (see .env.example); it never reaches the browser. Example
 messages are staged for the demo; no real guest data is used anywhere.
 
+Cameras: the sandbox never fetches from a camera. The camera plays use
+staged frame metadata and staged camera status, classified by the fixture
+vision implementation. Production camera compatibility and limits (which
+hardware qualifies, what is excluded, and how a model is certified) are
+in docs/CAMERA-SUPPORT.md.
+
 ## Triage (top of the page)
 Paste a guest message (or use a staged chip) and press Triage:
 POST /triage runs the escalate policy server-side and returns the

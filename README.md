@@ -15,7 +15,7 @@ What it operates:
 - Early check-in: a guest's request is checked against the same-day turnover reality; when it works, a yes reply is drafted and held for approval along with the fee step.
 - In-stay issues: problems during a stay, from a door that will not unlock to getting a handyman dispatched.
 - Special requests: late checkout is built, checked against the next arrival and the turnover in between; when the ask runs into the next guest, the drafted reply offers the latest time that works, and any fee is its own held step. The other request types (supplies, a crib, parking) are designed on the same rails.
-- Exterior-camera oversight: the outside of the home is watched, so someone is looking out for the property even when the operator is not there.
+- Exterior-camera oversight: the camera plays work from the frames and camera status that a camera connection supplies, and send anything unexpected outside the home to the operator. This build uses staged frames and staged camera status; it has no live camera connection. See Camera support and limits below.
 
 ## How Jev fits
 
@@ -32,6 +32,20 @@ The graded record so far, from the eval harness in this repo (full 107-message e
 Pre-existing, disclosed as background and baseline only: Jev, the decision model by TypeSafe AI; the operator's hand-labeled dataset of real guest messages; and the shadow pilot the operator ran Oct 7–14, 2026, which graded the triage decisions the eval set is built from. None of that is presented as hackathon work.
 
 Built during the hackathon, Oct 26 to Nov 4, 2026 — the Comfi Autopilot layer in this repo: the port of the pipeline to the Meta Model API (Muse Spark for fast triage, Muse Wonder for reasoning and drafts), the eval harness and confidence ledger, the graduated-autonomy ladder, the plays engine (early check-in, cleaner-done to guest-ready, in-stay issues with handyman dispatch, exterior-camera checks, late checkout), the outcome metrics, the deterministic frame gate for camera stills (plain code that refuses any frame without a usable, unclipped subject before a model or a human ever sees it as evidence), and this judge sandbox.
+
+## Camera support and limits
+
+This build has no live camera connector and no live camera feed. Every camera play in the sandbox runs on staged frames and staged camera status. The live vision path was verified against the Meta Model API on Oct 27, 2026 with a test image; that is a vision check, not a camera integration.
+
+In production, a camera connection has to supply motion-triggered frames, a fresh frame on demand, repeated frames at separate times, the latest frames on request, online and offline events with retained history, a stable mapping of each camera to one property, and frames clear enough for the frame gate and the vision check.
+
+Production camera support is limited to these classes. None of these connectors is built in this repo.
+
+- Certified ONVIF Profile S/T or RTSP IP camera systems, including tested NVR channels.
+- UniFi Protect cameras through a UniFi OS Protect console.
+- Selected powered Wyze models through docker-wyze-bridge, which is community software and not a Wyze-published integration.
+
+Support is certified by exact model, firmware, power type, and connector version. A brand name alone is never a support promise. Battery-powered cameras that sleep and app-only cameras are not supported for the full camera feature set. Blink, Ring, Arlo, and Google Nest (support varies by model) are not full-support promises. The full boundary, the named models and exclusions, and the certification checks are in [docs/CAMERA-SUPPORT.md](docs/CAMERA-SUPPORT.md).
 
 ## Run it
 

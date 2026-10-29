@@ -528,7 +528,7 @@
             <tr><td class="spec-n"><span class="ic ic-cleaner" aria-hidden="true"></span></td><th scope="row" class="spec-name"><a href="#play-cleaner"><span class="pn">Cleaner done</span></a></th><td class="spec-desc">No guest message at all: the cleaner finishing is the trigger.</td><td class="spec-gate"><span class="gate-word gw-held">Held for approval</span></td></tr>
             <tr><td class="spec-n"><span class="ic ic-instay" aria-hidden="true"></span></td><th scope="row" class="spec-name"><a href="#play-instay"><span class="pn">In-stay issue</span></a></th><td class="spec-desc">A guest who is already in the home reports something broken.</td><td class="spec-gate"><span class="gate-word gw-held">Held for approval</span></td></tr>
             <tr><td class="spec-n"><span class="ic ic-late" aria-hidden="true"></span></td><th scope="row" class="spec-name"><a href="#play-late"><span class="pn">Late checkout</span></a></th><td class="spec-desc">A departing guest asks to check out late.</td><td class="spec-gate"><span class="gate-word gw-held">Held for approval</span></td></tr>
-            <tr><td class="spec-n"><span class="ic ic-cameras" aria-hidden="true"></span></td><th scope="row" class="spec-name"><a href="#cameras"><span class="pn">Cameras</span></a></th><td class="spec-desc">An outside camera reports motion — no message from anyone.</td><td class="spec-gate"><span class="gate-word gw-held">Held for approval</span></td></tr>
+            <tr><td class="spec-n"><span class="ic ic-cameras" aria-hidden="true"></span></td><th scope="row" class="spec-name"><a href="#cameras"><span class="pn">Cameras</span></a></th><td class="spec-desc">A supported outside camera reports motion: no message from anyone.</td><td class="spec-gate"><span class="gate-word gw-held">Held for approval</span></td></tr>
           </tbody>
         </table>
       </div>
@@ -670,6 +670,11 @@
          grows well past the booked party, and signs of a possible move-in. In the
          live path Muse Spark reads each frame; here the frames are staged examples
          with their labels attached.</p>
+      <p>Camera support has a hardware boundary. In production, the cameras need a
+         certified connection that can supply frames and offline history: an ONVIF
+         or RTSP camera system, UniFi Protect, or a listed powered Wyze model
+         through Wyze Bridge. Battery-powered and app-only cameras do not qualify
+         for the full set of checks.</p>
       </div>
       <div class="cam-grid">
         <div class="cam-cards scenarios">
