@@ -56,6 +56,10 @@ def usage_cost(resp: dict | None, model: str, fallback_text_len: int = 0) -> flo
     prices = {  # (input, output) per 1M tokens
         "muse-spark-1.3": (1.25, 4.25),
         "muse-wonder-1.0": (4.00, 20.00),
+        # At-par estimate: the Baseten hackathon key is metered against a
+        # $100 credit, not a published per-token price, so it is priced like
+        # muse-spark-1.3. Pinned in docs/API-NOTES.md.
+        "meta-models/muse-spark-open-1026": (1.25, 4.25),
     }
     pin, pout = prices.get(model, (1.25, 4.25))
     usage = (resp or {}).get("usage") or {}

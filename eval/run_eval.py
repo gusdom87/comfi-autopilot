@@ -15,12 +15,13 @@ import sys
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 
+from jev.baseten_client import BasetenClient
 from jev.client import MetaModelClient
 from jev.config import Config
 from jev.tiers import decide
 from scoring import render_scorecard, score_rows
 
-MAX_CALLS = {"spark_only": 2, "wonder_only": 2, "escalate": 3}
+MAX_CALLS = {"spark_only": 2, "wonder_only": 2, "escalate": 3, "open_escalate": 3}
 EST_IN, EST_OUT = 350, 90  # tokens, rough planning figures
 PRICES = {"muse-spark-1.3": (1.25, 4.25), "muse-wonder-1.0": (4.00, 20.00)}
 
@@ -97,11 +98,14 @@ def main() -> int:
 
     os.makedirs(args.out, exist_ok=True)
     inner = MockClient() if args.mock else MetaModelClient(config)
+    open_inner = MockClient() if args.mock else BasetenClient(config)
+    # One cache dir for both APIs: the cache key includes the model name.
     client = CachingClient(inner, os.path.join(args.out, "cache"))
+    open_client = CachingClient(open_inner, os.path.join(args.out, "cache"))
     rows = []
     for i, r in enumerate(scored):
         d = decide(args.policy, text_of(r), {"property": r.get("property", "")},
-                   client=client, examples=examples)
+                   client=client, examples=examples, open_client=open_client)
         rows.append({
             "id": i,
             "ground_truth": r["ground_truth"],

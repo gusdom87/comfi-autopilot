@@ -1,0 +1,43 @@
+{
+ "n": 101,
+ "accuracy": 0.7425742574257426,
+ "total_cost_usd": 1.16443,
+ "mean_cost_usd": 0.0115290099009901,
+ "by_category": {
+  "Confirm": {
+   "n": 37,
+   "accuracy": 0.8378378378378378
+  },
+  "Act": {
+   "n": 29,
+   "accuracy": 0.5517241379310345
+  },
+  "Ignore": {
+   "n": 35,
+   "accuracy": 0.8
+  }
+ },
+ "decisive_n": 53,
+ "decisive_accuracy": 0.8301886792452831,
+ "cost_per_correct_decisive": 0.026464318181818183,
+ "high_conf_n": 84,
+ "high_conf_coverage": 0.8316831683168316,
+ "high_conf_accuracy": 0.7619047619047619,
+ "confusion": {
+  "Confirm": {
+   "Confirm": 31,
+   "Act": 0,
+   "Ignore": 6
+  },
+  "Act": {
+   "Confirm": 10,
+   "Act": 16,
+   "Ignore": 3
+  },
+  "Ignore": {
+   "Confirm": 7,
+   "Act": 0,
+   "Ignore": 28
+  }
+ }
+}
