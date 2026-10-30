@@ -15,7 +15,7 @@ Three pieces, none of them wired to a live loop:
   crew_gate   the crew send gate (S4-minimal): verified recipient,
               approved template, per-action autonomy check, full
               log. Code only: its transport is a mock, and it refuses
-              any transport that is not offline.
+              any transport that does not declare itself offline.
 
 Support modules: classes (the action-key class map, package 1b),
 templates (the approved-template registry and content lint), transport

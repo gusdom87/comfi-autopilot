@@ -30,8 +30,8 @@ sends, and the log records why.
                  time
    9 content     lint on the rendered text, the directory's worker
                  names included; an optional voice lint hook
-  10 consent     a job text needs a recorded YES to the approved
-                 worker notice; nobody opted out
+  10 consent     every text but the registered worker notice needs a
+                 recorded YES to that approved notice; nobody opted out
   11 duplicate   one attempt per run, recipient, and template, ever;
                  an attempt with an unclear result is never re-sent
   12 thread      the worker's thread re-read now; a failed read refuses
@@ -68,7 +68,7 @@ from . import deny_list
 from ._files import append_jsonl, check_private_path, read_jsonl
 from .classes import CREW_ACTION_KEYS, ROLES, class_for, may_run_without_approval
 from .templates import TemplateRegistry, lint, render
-from .transport import E164_RE, UNKNOWN, CrewTransport, SendResult
+from .transport import UNKNOWN, CrewTransport, SendResult, is_e164
 
 REFUSED, HELD, DEFERRED, READY = "refused", "held", "deferred", "ready"
 SENT, SEND_FAILED = "sent", "send_failed"
@@ -122,7 +122,7 @@ class Directory:
     def __init__(self, properties: dict[str, PropertyEntry], people: dict[str, Person]):
         numbers = {}
         for p in people.values():
-            if not E164_RE.match(p.number):
+            if not is_e164(p.number):
                 raise ValueError(f"directory: {p.person_id} has no valid E.164 number")
             if p.number in numbers:
                 raise ValueError(f"directory: {p.person_id} and {numbers[p.number]} share a number")
@@ -398,10 +398,12 @@ class CrewSendGate:
             return refuse("content", ", ".join(hits))
         ok("content")
 
-        # 10 consent
+        # 10 consent. Only the registered worker notice goes out without a
+        # recorded YES, since it is the text that asks for one. Keyed on
+        # the registered notice's ID and kind, so no other template skips it.
         if person.opted_out:
             return refuse("consent", "the recipient opted out of automated texts")
-        if t.kind == "job":
+        if not (t.template_id == self._notice_id and t.kind == "notice"):
             notice = self._registry.get(self._notice_id)
             if notice is None or not notice.approved:
                 return refuse("consent", "the worker notice is not approved by the operator; "

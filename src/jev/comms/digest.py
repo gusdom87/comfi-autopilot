@@ -33,7 +33,9 @@ through Quo, and only when every gate holds (send_blockers):
   - a2p_confirmed is true in the config. It ships false: the line's
     A2P 10DLC registration is unverified (package L1, Q4);
   - operator_number and from_number are valid E.164 numbers, not the
-    same number, and the operator number is not in the crew directory;
+    same number;
+  - a crew directory is configured and readable, and the operator
+    number is not in it;
   - the Quo CLI path exists;
   - this digest was never sent or attempted before.
 A refusal is logged with every reason and exits 3. The window does not
@@ -46,7 +48,9 @@ build-only run advances the window (the file is the digest of record)
 unless --no-advance. A send run advances it only on a confirmed send.
 Items waiting on the operator are not windowed: a held item stays under
 "Waiting on you" until a host reply is recorded or 24 hours pass, and
-older unanswered items are counted, never dropped silently.
+older unanswered items are counted, never dropped silently. The shadow's
+no_reply_24h grade is not a reply. A host reply the shadow recorded also
+clears the actuator's queue copy of the same message.
 """
 import argparse
 import fcntl
@@ -64,7 +68,7 @@ from zoneinfo import ZoneInfo
 from ._files import (append_jsonl, check_private_path, ensure_private_dir,
                      read_jsonl, write_private)
 from .crew_gate import Directory
-from .transport import E164_RE, OperatorTransport, QuoCliOperatorTransport, SendResult
+from .transport import OperatorTransport, QuoCliOperatorTransport, SendResult, is_e164
 
 CONFIG_SCHEMA = "operator-digest/config/v1"
 PAYLOAD_SCHEMA = "operator-digest/payload/v1"
@@ -122,6 +126,9 @@ def config_from_dict(d: dict) -> DigestConfig:
     for key in ("shadow_ledger", "out_dir"):
         if not isinstance(d.get(key), str) or not d[key]:
             raise ConfigError(f"{key} is required")
+    for key in ("operator_number", "from_number", "quo_cli", "quo_pythonpath", "crew_directory"):
+        if d.get(key) is not None and not isinstance(d[key], str):
+            raise ConfigError(f"{key} must be a string or null, not {type(d[key]).__name__}")
     tz = d.get("timezone") or DEFAULT_TZ
     try:
         ZoneInfo(tz)
@@ -285,11 +292,19 @@ def guard_trips(item: Item) -> list[str]:
     return out
 
 
+def _answered(item: Item) -> bool:
+    """A host reply is on record for this shadow row. The live shadow
+    grades host_outcome as host_replied or no_reply_24h, and only the
+    first one is an answer."""
+    return item.raw.get("answered_by_human") is True or \
+        item.raw.get("host_outcome") == "host_replied"
+
+
 def _shadow_waiting(item: Item, now: datetime) -> str:
     """'waiting', 'old' (past the held window, no answer recorded), or ''."""
     if item.category not in ("Act", "Confirm") or item.at > now:
         return ""
-    if item.raw.get("answered_by_human") or item.raw.get("host_outcome"):
+    if _answered(item):
         return ""
     return "waiting" if now - item.at <= HELD_WINDOW else "old"
 
@@ -349,6 +364,9 @@ def compose(cfg: DigestConfig, src: Sources, state: dict, now: datetime) -> Dige
     no_id = sum(1 for i in windowed if not i.property_id)
 
     waiting, client_waiting, old = {}, {}, 0
+    # Messages the shadow has seen answered. The actuator does not track
+    # replies, so its queue copy of one of these is no longer waiting.
+    answered = {i.key for i in shadow if i.message_at and _answered(i)}
     for i in shadow:
         st = _shadow_waiting(i, now)
         if not st:
@@ -361,12 +379,13 @@ def compose(cfg: DigestConfig, src: Sources, state: dict, now: datetime) -> Dige
         elif i.property_id and st == "waiting":
             client_waiting[i.key] = i
     for i in queue:
-        if i.at > now:
+        if i.at > now or i.key in answered:
             continue
         if now - i.at > HELD_WINDOW:
             old += 1 if i.property_id in own else 0
             continue
-        # The actuator is the live lane: its copy wins over the shadow's.
+        # The actuator is the live lane: its copy of an unanswered
+        # message wins over the shadow's.
         (waiting if i.property_id in own else client_waiting)[i.key] = i
     rank = {"Act": 0, "Confirm": 1}
     waiting_list = sorted(waiting.values(), key=lambda i: (rank.get(i.category, 2), i.at))
@@ -625,15 +644,18 @@ def send_blockers(cfg: DigestConfig, digest_id: str, content: str, state: dict) 
     op, frm = cfg.operator_number, cfg.from_number
     if not op:
         out.append("No operator number: operator_number is not set in the config.")
-    elif not E164_RE.match(op):
+    elif not is_e164(op):
         out.append("operator_number is not a valid E.164 number.")
     if not frm:
         out.append("No sending line: from_number is not set in the config.")
-    elif not E164_RE.match(frm):
+    elif not is_e164(frm):
         out.append("from_number is not a valid E.164 number.")
     if op and frm and op == frm:
         out.append("operator_number is the sending line itself.")
-    if op and cfg.crew_directory:
+    if not cfg.crew_directory:
+        out.append("No crew directory configured: the operator number can't be checked "
+                   "against worker numbers.")
+    elif op:
         try:
             crew = Directory.load(cfg.crew_directory).numbers()
         except (OSError, ValueError) as e:

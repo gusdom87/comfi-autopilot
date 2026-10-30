@@ -4,6 +4,7 @@ subprocess raises if anything touches one."""
 import hashlib
 import json
 import os
+import shutil
 import socket
 import stat
 import subprocess
@@ -18,8 +19,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from jev.change_guard import HOLDING_REPLY
 from jev.comms import digest as dg
 from jev.comms._files import RepoPathError
+from jev.comms.crew_gate import Directory
 from jev.comms.transport import (FAILED, MockOperatorTransport, QuoCliOperatorTransport,
-                                 RecipientError)
+                                 RecipientError, single_recipient)
 
 FIX = os.path.join(os.path.dirname(__file__), "fixtures", "comms")
 SHADOW = os.path.join(FIX, "shadow-ledger.jsonl")
@@ -55,7 +57,13 @@ def make_cfg(tmp_path, **over):
 def sendable_cfg(tmp_path, **over):
     cli = tmp_path / "quo.py"
     cli.write_text("# stand-in path; never executed\n")
-    base = dict(operator_number=OPERATOR, from_number=LINE, a2p_confirmed=True, quo_cli=str(cli))
+    crew = tmp_path / "crew-directory.json"
+    crew.write_text(json.dumps({
+        "schema": "crew-directory/v1",
+        "properties": {MAPLE: {"short_name": "Maple", "roles": {"cleaner": ["w1"]}}},
+        "people": {"w1": {"number": "+15555550101", "opted_out": False}}}))
+    base = dict(operator_number=OPERATOR, from_number=LINE, a2p_confirmed=True, quo_cli=str(cli),
+                crew_directory=str(crew))
     base.update(over)
     return make_cfg(tmp_path, **base)
 
@@ -128,6 +136,47 @@ def test_a_message_in_both_logs_waits_once_as_the_actuator_copy(tmp_path):
     d = compose(make_cfg(tmp_path, shadow_ledger=str(ledger)))
     same = [i for i in d.waiting if i.reservation_id == "res-a2"]
     assert len(same) == 1 and same[0].source == "actuator"
+
+
+def test_a_shadow_row_graded_no_reply_24h_is_unanswered_and_counts_as_old(tmp_path):
+    # Fable audit F1. The live shadow grades host_outcome as host_replied
+    # or no_reply_24h; no_reply_24h is not an answer, so a held row past
+    # 24 hours is counted, never dropped.
+    ledger = tmp_path / "shadow.jsonl"
+    with open(SHADOW) as fh:
+        lines = fh.read()
+    graded = [{"decided_at": "2026-10-29T20:00:00+00:00", "property": "Maple Street House",
+               "property_id": MAPLE, "reservation_id": f"res-n{n}",
+               "message_at": "2026-10-29T19:55:00+00:00", "message_text": "Hello?",
+               "engine_category": category, "confidence": 0.8, "draft": "Let me check.",
+               "reason": "x", "failsafe": False, "answered_by_human": False,
+               "host_outcome": "no_reply_24h"}
+              for n, category in enumerate(("Confirm", "Act", "Ignore"))]
+    ledger.write_text(lines + "".join(json.dumps(r) + "\n" for r in graded))
+    d = compose(make_cfg(tmp_path, shadow_ledger=str(ledger)))
+    assert d.waiting_old == 4                    # the fixture's 2, plus the Confirm and the Act
+    assert len(d.waiting) == 5
+    assert "4 held items older than 24 hours with no recorded answer" in d.text
+
+
+def test_a_queue_copy_of_a_message_the_host_answered_is_not_waiting(tmp_path):
+    # Fable audit F2. The actuator does not track replies; the shadow
+    # recorded one for res-s04, so the queue's copy of it is not waiting.
+    act = tmp_path / "actuator"
+    shutil.copytree(ACTUATOR, act)
+    with open(act / "confirm-queue.jsonl", "a") as fh:
+        fh.write(json.dumps({
+            "queued_at": "2026-10-30T16:05:00+00:00", "kind": "confirm",
+            "hold_reason": "held_confirm", "property": "Cedar Hollow", "property_id": CEDAR,
+            "reservation_id": "res-s04", "message_at": "2026-10-30T16:00:00Z",
+            "message_text": "Where do we park?", "engine_category": "Confirm", "confidence": 0.8,
+            "draft": "The driveway is all yours.", "engine_reason": "parking question",
+            "failsafe": False}) + "\n")
+    d = compose(make_cfg(tmp_path, actuator_dir=str(act)))
+    assert "res-s04" not in {i.reservation_id for i in d.waiting}
+    assert len(d.waiting) == 5 and d.waiting_old == 2
+    waiting = d.text.split("WAITING ON YOU")[1].split("NEW DECISIONS")[0]
+    assert "Where do we park?" not in waiting and "The driveway is all yours." not in waiting
 
 
 def test_guard_trips_surface_with_plain_labels(tmp_path):
@@ -329,6 +378,14 @@ def test_sms_is_ascii_capped_and_counts_overflow(tmp_path):
     assert dg.sms_segments(d.sms) <= 5
 
 
+def test_the_sms_cap_is_a_hard_ceiling(tmp_path):
+    # The line loop keeps the SMS under the cap; the final cut is the
+    # ceiling whatever the content (scripts/mutation_check_comms.py).
+    d = compose(make_cfg(tmp_path))
+    for cap in (40, 160, dg.SMS_MAX_CHARS):
+        assert len(dg.render_sms(d, cap)) <= cap
+
+
 def test_times_are_property_local_across_the_dst_change():
     assert dg.fmt_time(datetime(2026, 11, 1, 6, 30, tzinfo=timezone.utc), "America/Chicago") \
         == "Sun Nov 1, 1:30 AM CDT"
@@ -364,7 +421,8 @@ def test_the_shipped_default_config_refuses_with_every_reason(tmp_path):
     res = dg.run(cfg, NOW, send=True, transport_factory=no_factory, err=lambda m: None)
     assert res.exit_code == dg.EXIT_REFUSED
     joined = " ".join(res.reasons)
-    for part in ("A2P not confirmed", "No operator number", "No sending line", "quo_cli"):
+    for part in ("A2P not confirmed", "No operator number", "No sending line", "No crew directory",
+                 "quo_cli"):
         assert part in joined
 
 
@@ -393,6 +451,17 @@ def test_operator_number_may_not_be_a_crew_number(tmp_path):
     unreadable = sendable_cfg(tmp_path, crew_directory=str(tmp_path / "missing.json"))
     res = dg.run(unreadable, NOW, send=True, transport_factory=no_factory, err=lambda m: None)
     assert res.outcome == "refused" and "crew directory could not be read" in res.reasons[0]
+
+
+def test_a_missing_crew_directory_refuses_the_operator_send(tmp_path):
+    # Fable audit F4. Without a directory the operator number can't be
+    # checked against worker numbers, so the check is a gate, not optional.
+    cfg = sendable_cfg(tmp_path, crew_directory=None)
+    res = dg.run(cfg, NOW, send=True, transport_factory=no_factory, err=lambda m: None)
+    assert res.exit_code == dg.EXIT_REFUSED
+    assert res.reasons == ["No crew directory configured: the operator number can't be checked "
+                           "against worker numbers."]
+    assert dg.load_state(cfg.out_dir)["sent"] == {}
 
 
 def test_missing_quo_cli_refuses(tmp_path):
@@ -440,6 +509,24 @@ def test_an_unclear_send_is_never_retried(tmp_path):
     assert again.outcome == "refused"
 
 
+def test_the_intent_is_on_disk_before_the_transport_runs(tmp_path):
+    # A crash the send path can't catch still leaves the intent record, so
+    # the digest is never sent again (scripts/mutation_check_comms.py).
+    class Killed(BaseException):
+        pass
+
+    class Crash(MockOperatorTransport):
+        def send(self, content):
+            raise Killed()
+
+    cfg = sendable_cfg(tmp_path)
+    with pytest.raises(Killed):
+        dg.run(cfg, NOW, send=True, transport_factory=lambda c: Crash(c.operator_number))
+    assert [v["outcome"] for v in dg.load_state(cfg.out_dir)["sent"].values()] == ["sending"]
+    again = dg.run(cfg, NOW, send=True, transport_factory=no_factory, err=lambda m: None)
+    assert again.outcome == "refused" and "already sending" in again.reasons[0]
+
+
 def test_a_transport_bound_to_another_number_is_refused(tmp_path):
     cfg = sendable_cfg(tmp_path)
     other = lambda c: MockOperatorTransport("+15555550111")  # noqa: E731
@@ -473,6 +560,21 @@ def test_cli_config_error_exits_2(tmp_path, capsys):
     assert dg.main(["--config", str(path)]) == dg.EXIT_CONFIG
 
 
+@pytest.mark.parametrize("key", ["operator_number", "from_number", "quo_cli", "quo_pythonpath",
+                                 "crew_directory"])
+def test_a_non_string_number_or_path_is_a_config_error(tmp_path, capsys, key):
+    # Fable audit F5. A list, number, or object here used to crash every
+    # run, build-only included, before any file was written.
+    for bad in ([OPERATOR, "+15555550111"], 15555550199, {"number": OPERATOR}):
+        with pytest.raises(dg.ConfigError, match=f"{key} must be a string or null"):
+            make_cfg(tmp_path, **{key: bad})
+    path = tmp_path / "cfg.json"
+    path.write_text(json.dumps(raw_cfg(tmp_path, **{key: [OPERATOR]})))
+    assert dg.main(["--config", str(path), "--now", NOW.isoformat()]) == dg.EXIT_CONFIG
+    assert f"config error: {key} must be a string or null, not list" in capsys.readouterr().err
+    assert not os.path.exists(tmp_path / "out")
+
+
 # --- the real Quo transport, without running it ---
 
 def test_quo_cli_transport_builds_one_send_to_the_operator():
@@ -483,6 +585,24 @@ def test_quo_cli_transport_builds_one_send_to_the_operator():
         QuoCliOperatorTransport("/opt/x/quo.py", LINE, LINE)
     with pytest.raises(RecipientError):
         QuoCliOperatorTransport("/opt/x/quo.py", LINE, [OPERATOR, "+15555550111"])
+
+
+@pytest.mark.parametrize("number", ["+15555550199\n", "+1555555019９"])
+def test_e164_is_ascii_digits_and_the_whole_string(tmp_path, number):
+    # Fable audit F6. "$" let a trailing newline through and "\d" let a
+    # fullwidth digit through. Refused at every recipient gate.
+    for build in (single_recipient, MockOperatorTransport,
+                  lambda n: QuoCliOperatorTransport("/opt/x/quo.py", LINE, n),
+                  lambda n: QuoCliOperatorTransport("/opt/x/quo.py", n, OPERATOR)):
+        with pytest.raises(RecipientError):
+            build(number)
+    for key in ("operator_number", "from_number"):
+        cfg = sendable_cfg(tmp_path, **{key: number})
+        res = dg.run(cfg, NOW, send=True, transport_factory=no_factory, err=lambda m: None)
+        assert res.outcome == "refused" and f"{key} is not a valid E.164 number." in res.reasons
+    with pytest.raises(ValueError, match="no valid E.164"):
+        Directory.from_dict({"schema": "crew-directory/v1", "properties": {},
+                             "people": {"w1": {"number": number, "opted_out": False}}})
 
 
 class _Proc:

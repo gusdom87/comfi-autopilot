@@ -16,15 +16,16 @@ All new code is in `src/jev/comms/`. No existing file was changed.
 | S2-minimal crew send gate | `crew_gate.py`, `templates.py` | `CrewSendGate.evaluate/submit` is the only public surface. A request has no body field: the text is an approved template (hash-pinned), rendered by the gate. Slots can only be dates and times; the property name comes from the directory. Hard checks: deny list, own-listing allowlist, per-property role directory (cleaner, handyman, plumber, electrician; exactly one active entry, or it is refused), template approval, language, typed slots, content lint (money, access, digits, cameras, pronouns, guest details, discipline, signature, dashes, worker names), recorded YES to the approved notice, opt-out, one attempt per run, recipient, and template, and a thread re-read. Holds: cleaner recipient, yield to a human (2 h), loop guard, caps (3 per worker per day, 3 per job, 10 per day overall), and per-action autonomy. Worker quiet hours (9 PM to 7 AM, property-local, DST-aware) defer a send. Every call is logged in full, mode 600, outside the repo. |
 | Connector deny-list | `deny_list.py` | The 12 operations package L7 names (Hospitable lock/unlock, cancel-reservation, create-quote, update-reservation, update-property-calendar, send-reservation-message; Quo agent call and conversation, knowledge agent, bulk, group, call transcripts) raise `DeniedOperation`. Everything else is denied by default. The only allowed operation is `quo:send-message` to one number. A surface scanner fails the tests if any comms module or class grows a denied name. |
 | Class map (1b) | `classes.py` | Fixed A/B/C/D class per action key. Appendix B keys are D, an unknown key is D, and the map is read-only. B runs alone only on its own key's earned right; C and D never do. |
-| Transports | `transport.py` | The crew transport has a mock only, and the gate refuses any transport that isn't offline. The operator transport has a mock plus `QuoCliOperatorTransport` (`quo.py send`, one recipient bound at construction). The digest builds it only after every gate holds, and no test runs it. |
+| Transports | `transport.py` | The crew transport has a mock only, and the gate refuses any transport that does not declare itself offline (`OFFLINE = True`; a type check is open item F7). The operator transport has a mock plus `QuoCliOperatorTransport` (`quo.py send`, one recipient bound at construction). The digest builds it only after every gate holds, and no test runs it. |
 | Private files | `_files.py` | Mode 600 files in mode 700 directories. Any path inside a git work tree is refused. |
 
 ## Tests
 
-- **144 new tests, all passing.** Full suite: **558 passed** (414 before
-  this branch plus 144 new), offline. In the new tests, sockets and
-  subprocesses raise if touched. The fixtures in `tests/fixtures/comms/`
-  are all invented.
+- **160 new tests, all passing.** Full suite: **574 passed** (414 before
+  this branch, 144 added at build commit 2768f27, 16 added with the audit
+  fixes below), offline. In the digest and crew gate tests, sockets and
+  subprocesses raise if touched; the deny-list tests touch neither. The
+  fixtures in `tests/fixtures/comms/` are all invented.
 - Digest, on the fixture ledger: counts (9 new, 5 waiting, 2 older than 24 h,
   2 sends, 1 auto-disarm, 4 guard trips, 2 client rows and 1 no-ID row left
   out, 1 unreadable line), drafts shown, Act sorted first, a message in both
@@ -40,17 +41,60 @@ All new code is in `src/jev/comms/`. No existing file was changed.
   gates exits 3.
 - Gate: unknown, ambiguous, or mismatched recipient refused; unapproved,
   edited, or unknown template refused; free-text slot rejected at load;
-  deny-listed operations refused and absent from the surface; non-offline
-  transport refused; consent, opt-out, quiet hours across Nov 1, caps,
-  yield, loop guard, duplicates, and logging all covered.
-- **Mutation pass:** 41 mutations, each breaking one gate in a scratch copy;
-  all 41 turned the suite red. The first pass found one gap (a client row in
-  the actuator queue); a test now covers it.
-- **Smoke run on the real shadow ledger:** build-only, `--no-advance`, output
-  in `/tmp` and then deleted. Own IDs came from the actuator's resolved
-  allowlist. Exit 0; the ledger was byte-identical afterward; 2 own decisions
-  in the 24 h window, 0 waiting, 1 client row left out, and 4 send blockers
-  listed in the payload.
+  deny-listed operations refused and absent from the surface; a transport
+  that does not declare itself offline refused; consent, opt-out, quiet
+  hours across Nov 1, caps, yield, loop guard, duplicates, and logging all
+  covered.
+- **Mutation pass:** `scripts/mutation_check_comms.py` applies 61
+  mutations, each breaking one gate in a scratch copy: 51 ported from the
+  Fable audit's pass, and 10 that revert fixes F1 to F6. The unmutated copy
+  must pass first (160 passed). Then 61 of 61 mutants turned the comms tests
+  red (run Oct 29, 2026, after the fixes; exit 0). The build-time claim of
+  41 of 41 is withdrawn: no script or output for it exists on disk.
+- **Smoke run on the real shadow ledger** (at commit 2768f27): build-only,
+  `--no-advance`, output in `/tmp` and then deleted. Own IDs came from the
+  actuator's resolved allowlist. Exit 0; the ledger was byte-identical
+  afterward; 2 own decisions in the 24 h window, 0 waiting, 1 client row
+  left out, and 4 send blockers listed in the payload. With fix F4, the
+  same config (no crew directory) would list a fifth.
+
+## Fixes after the Fable audit
+
+The audit (`FABLE-AUDIT.md`, Claude Fable 5.1 at High effort, on 2768f27)
+named six fixes required before the Mon Nov 2 merge. All six are in, each
+with its test. Each test in the table fails on 2768f27 and passes now.
+
+| Fix | Change | Test |
+|---|---|---|
+| F1 | `digest.py`: a shadow row counts as answered only on `answered_by_human: true` or `host_outcome: "host_replied"`. A held Act or Confirm graded `no_reply_24h` is unanswered and, past 24 h, counted as old, not dropped. | `test_a_shadow_row_graded_no_reply_24h_is_unanswered_and_counts_as_old` |
+| F2 | `digest.py`: an actuator queue copy of a message the shadow recorded as answered is skipped, so a host reply clears it from "Waiting on you". | `test_a_queue_copy_of_a_message_the_host_answered_is_not_waiting` |
+| F3 | `templates.py`: a `notice` template must carry `crew_notice`, and a `job` template must not, or it is rejected at load. `crew_gate.py`: every template except the registered notice (its ID, of kind `notice`) needs a recorded YES. | `test_a_notice_kind_template_on_another_key_is_rejected_at_load` (audit probe C17), `test_a_job_template_on_the_notice_key_is_rejected_at_load`, `test_only_the_registered_notice_goes_without_a_recorded_yes` |
+| F4 | `digest.py`: no `crew_directory` in the config is a send blocker. | `test_a_missing_crew_directory_refuses_the_operator_send` |
+| F5 | `digest.py`: `operator_number`, `from_number`, `quo_cli`, `quo_pythonpath`, and `crew_directory` must be a string or null, or the run exits 2 with a config error. | `test_a_non_string_number_or_path_is_a_config_error` (each of the five keys) |
+| F6 | `transport.py`: `E164_RE` is `\A\+[1-9][0-9]{7,14}\Z`, checked with `fullmatch` through `is_e164` at every recipient gate (transports, digest, directory). A trailing newline or a non-ASCII digit is refused. | `test_e164_is_ascii_digits_and_the_whole_string` (both strings) |
+
+Also:
+
+- **The audit's mutation harness had a red baseline.** In a scratch copy
+  with no `.git`, two repo-path tests fail before any mutation, so every
+  mutant there turned red whether or not its gate was tested. The committed
+  script gives the copy an empty `.git` and requires a green baseline.
+  Under that harness, three of the audit's 51 mutants survived: the
+  intent-before-send write, the SMS length cap, and an untyped slot at
+  render. The code was right in all three; the tests didn't pin it. One
+  test now covers each (they pass on 2768f27 too):
+  `test_the_intent_is_on_disk_before_the_transport_runs`,
+  `test_the_sms_cap_is_a_hard_ceiling`, and
+  `test_render_refuses_a_slot_with_no_type_even_past_the_registry`.
+- The `sendable_cfg` test helper now writes a crew directory, since a
+  sendable config needs one after F4.
+- F13 (`NEVER_EARNED` holds only `charge_guest`) is resolved and was not
+  changed: Phase 0 verified that no other money action keys exist in the
+  code, and `test_every_money_stake_key_is_never_earned` in
+  `tests/test_change_guard.py` fails if a future highest-stake key ships
+  outside `NEVER_EARNED`.
+- F7 to F10 are required before any live crew transport, not before the
+  merge. They are listed under the remaining gates below.
 
 ## Decisions to check
 
@@ -104,7 +148,8 @@ All new code is in `src/jev/comms/`. No existing file was changed.
    `a2p_confirmed: true`.
 2. **Operator number config.** Set `operator_number` (Gus's own cell),
    `from_number`, `quo_cli`, `quo_pythonpath`, and `crew_directory`, so the
-   number is checked against worker numbers.
+   number is checked against worker numbers. Without a directory the send
+   is refused (F4).
 3. **Gus's yes** to one real text (Q4b) and to the digest format (Q7),
    after the Mon Nov 2 merge and Fable audit; Milo watches it live, and the
    message ID is logged.
@@ -116,7 +161,18 @@ All new code is in `src/jev/comms/`. No existing file was changed.
 2. **A2P coverage** for contractor notifications, plus a check of STOP
    behavior on the shared line.
 3. **Code changes:** a live `CrewTransport` and `ThreadReader`, audited
-   (the gate refuses non-offline transports today), and a live Turno
-   assignee read for cleaners.
-4. **Approvals:** templates by hash, directory entries, own-listing IDs,
+   (today the gate accepts only a transport that declares itself
+   offline), and a live Turno assignee read for cleaners.
+4. **Fable audit F7 to F10**, open and required before any live crew
+   transport:
+   - F7: replace the declared `OFFLINE` flag with a type check, so only
+     `MockCrewTransport` passes until the gate itself is edited.
+   - F8: a human-first hold when the worker's newest message is inbound
+     and newer than the last automated text, whatever its kind.
+   - F9: validate the directory's `short_name` at load (1 to 40
+     characters from a fixed set, lint-clean).
+   - F10: add the missing money words (dollars, bucks, compensation,
+     wages, salary, owed, billing) and guest-detail patterns ("guest
+     Maria", "Mr. Smith") to the content lint.
+5. **Approvals:** templates by hash, directory entries, own-listing IDs,
    and an earned right or Gus's R4 decision for any class B automation.

@@ -23,6 +23,10 @@ no gendered pronouns, no guest details or reservation codes, nothing
 about discipline or performance, never signed as Gus, no em or en
 dashes. The gate adds the directory's worker names.
 
+Only the worker notice is of kind "notice": a notice template must
+carry the crew_notice key, and a job template must not. The crew gate
+excuses only the registered notice from the recorded-YES check.
+
 The shipped drafts are text for the operator to approve (package Q7).
 None is approved, so the shipped registry refuses every send. The
 brand string is open (Q7: "Comfi Stays" or "Comfi-Stays"); changing it
@@ -37,6 +41,7 @@ from datetime import date, datetime
 from .classes import CREW_ACTION_KEYS, ROLES
 
 KINDS = ("job", "notice")
+NOTICE_ACTION_KEY = "crew_notice"
 
 SLOT_TYPES = {
     "property": "property",
@@ -137,6 +142,12 @@ def template_problems(t: Template) -> list[str]:
         problems.append(f"unknown kind {t.kind!r}")
     if t.action_key not in CREW_ACTION_KEYS:
         problems.append(f"{t.action_key!r} is not a crew action key")
+    # The notice kind skips the camera lint, so it belongs to the worker
+    # notice's key alone, and a job text never carries that key.
+    if t.kind == "notice" and t.action_key != NOTICE_ACTION_KEY:
+        problems.append(f"a notice template carries {NOTICE_ACTION_KEY}, not {t.action_key!r}")
+    if t.kind == "job" and t.action_key == NOTICE_ACTION_KEY:
+        problems.append(f"a job template can't carry {NOTICE_ACTION_KEY}")
     if not t.roles or any(r not in ROLES for r in t.roles):
         problems.append(f"roles must be from {', '.join(ROLES)}")
     bad = [s for s in t.slots if s not in SLOT_TYPES]

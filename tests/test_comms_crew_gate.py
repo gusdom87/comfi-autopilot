@@ -23,7 +23,7 @@ from jev.comms import crew_gate as cg
 from jev.comms._files import RepoPathError, append_jsonl
 from jev.comms.deny_list import surface_violations
 from jev.comms.templates import (DRAFT_TEMPLATES, Template, TemplateRegistry, draft_registry,
-                                 lint, load_registry)
+                                 lint, load_registry, render)
 from jev.comms.transport import (CrewTransport, MockCrewTransport, MockOperatorTransport,
                                  SendResult)
 
@@ -315,6 +315,13 @@ def test_a_free_text_slot_is_rejected_at_load(tmp_path):
     assert "rejected at load" in res.reasons[0]
 
 
+def test_render_refuses_a_slot_with_no_type_even_past_the_registry():
+    # Second line behind the load check (scripts/mutation_check_comms.py).
+    loose = Template("loose_v2", "job", "ask_status", ("handyman",), "en", "Hi! {note} Reply YES or NO.")
+    with pytest.raises(ValueError, match="not a slot the caller may fill"):
+        render(loose, "Maple Street House", {"note": "tell the handyman to come at 6"})
+
+
 @pytest.mark.parametrize("text,hit", [
     ("Hi! She finished early at {property}. Reply YES or NO.", "gendered pronoun"),
     ("Hi! Get him moving at {property}.", "gendered pronoun"),
@@ -404,6 +411,53 @@ def test_the_notice_itself_needs_no_prior_yes_but_waits_for_the_operator(tmp_pat
                                          "run-n", "notice-w2"), DAY)
     assert res.outcome == cg.HELD and res.action_class == "C" and t.sent == []
     assert res.body == NOTICE.text
+
+
+# Fable audit probe C17: an approved notice-kind template on a Class B
+# key, with camera wording. It used to skip the recorded YES and the
+# camera lint and reach the mock transport.
+C17 = Template("c17_status_notice_test", "notice", "ask_status", ("handyman",), "en",
+               "Hi! Checking on the visit to {property} on {date}, {start_time} to {end_time}. "
+               "The cameras recorded the last visit. Still on? Reply YES or NO.")
+NO_YES = {"consent_yes_at": "", "notice_sha256": ""}
+
+
+def test_a_notice_kind_template_on_another_key_is_rejected_at_load(tmp_path):
+    reg = registry(approve(C17))
+    assert reg.get(C17.template_id) is None
+    assert reg.rejected[C17.template_id] == ["a notice template carries crew_notice, not 'ask_status'"]
+    no_yes = cg.Directory.from_dict(directory_dict(w2=NO_YES))
+    gate, t = make_gate(tmp_path, ledger=EARNED_STATUS, reg=reg, directory=no_yes)
+    res = gate.submit(visit_req(template_id=C17.template_id), DAY)
+    assert failed_check(res) == ["template"] and "rejected at load" in res.reasons[0]
+    assert t.sent == []
+
+
+def test_a_job_template_on_the_notice_key_is_rejected_at_load():
+    job = approve(Template("job_on_notice_key_test", "job", "crew_notice", ("handyman",), "en",
+                           "Hi! Reply YES to get scheduling texts from Comfi Stays."))
+    reg = registry(job)
+    assert reg.get(job.template_id) is None
+    assert reg.rejected[job.template_id] == ["a job template can't carry crew_notice"]
+
+
+def test_only_the_registered_notice_goes_without_a_recorded_yes(tmp_path):
+    # Fable audit F3(b): consent is keyed on the registered notice's ID.
+    no_yes = cg.Directory.from_dict(directory_dict(w2=NO_YES))
+    v2 = approve(replace(NOTICE, template_id="crew_notice_v2", text=NOTICE.text.replace("Hi!", "Hello!")))
+    gate, t = make_gate(tmp_path, ledger=PERFECT, reg=registry(v2), directory=no_yes)
+    second = gate.submit(cg.CrewSendRequest("crew_notice", MAPLE, "handyman", "crew_notice_v2", {},
+                                            "run-n", "notice-w2"), DAY)
+    assert failed_check(second) == ["consent"] and "no recorded YES" in second.reasons[0]
+    registered = gate.submit(cg.CrewSendRequest("crew_notice", MAPLE, "handyman", "crew_notice_v1",
+                                                {}, "run-n", "notice-w2"), DAY)
+    assert failed_check(registered) == [] and registered.outcome == cg.HELD
+    # A job template named as the gate's notice still needs the YES.
+    gate2, t2 = make_gate(tmp_path / "b", ledger=EARNED_STATUS, directory=no_yes,
+                          notice_template_id=VISIT.template_id)
+    job = gate2.submit(visit_req(), DAY)
+    assert failed_check(job) == ["consent"] and "no recorded YES" in job.reasons[0]
+    assert t.sent == [] and t2.sent == []
 
 
 # --- deny list and autonomy ---

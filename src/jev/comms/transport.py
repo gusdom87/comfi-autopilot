@@ -30,9 +30,17 @@ from dataclasses import dataclass
 
 from .deny_list import check_operation
 
-E164_RE = re.compile(r"^\+[1-9]\d{7,14}$")
+# The recipient gate. ASCII digits only ([0-9]; \d also matches other
+# scripts' digits, like a fullwidth 9) and anchored at the absolute end
+# (\Z; $ also matches before a trailing newline). Use is_e164.
+E164_RE = re.compile(r"\A\+[1-9][0-9]{7,14}\Z")
 
 SENT, FAILED, UNKNOWN = "sent", "failed", "unknown"
+
+
+def is_e164(value) -> bool:
+    """One valid E.164 number, the whole string, nothing else."""
+    return isinstance(value, str) and E164_RE.fullmatch(value) is not None
 
 
 @dataclass(frozen=True)
@@ -49,7 +57,7 @@ class RecipientError(ValueError):
 def single_recipient(to) -> str:
     if not isinstance(to, str):
         raise RecipientError(f"exactly one recipient string is required, got {type(to).__name__}")
-    if not E164_RE.match(to):
+    if not is_e164(to):
         raise RecipientError("recipient is not a single E.164 number")
     return to
 
