@@ -14,6 +14,22 @@ Verified Oct 29, 2026: a key-less replay from this run's response cache
 reproduced results.jsonl byte for byte, so the committed artifacts are
 provably the shipped prompt's output.
 
+## final-107-guard — run of record plus the stay-change/money guard
+Same policy and shipped prompt as final-107-live, with the Phase 0
+deterministic stay-change/money guard active (src/jev/change_guard.py
+wraps the triage decision: stay-change and money messages come out
+Confirm at any model confidence). Overall 77.2%; decisive 82.5% (n=57);
+high-confidence 78.8% (n=80); per-class Confirm 83.8%, Act 55.2%,
+Ignore 88.6%; zero Confirm-to-Act errors (final-107-live had 2);
+16 escalations; zero fail-safes; total cost $1.85.
+The guard deliberately trades headline accuracy for safety. The eval
+labels predate the operator's Confirm policy for stay changes and
+money, so guarded rows that flip Act to Confirm score as wrong against
+the old labels while matching the operator's actual policy. On the
+operator's 28 hand-graded live messages, agreement rises from 22/28
+(unguarded) to 25/28 (guarded), and all three stay-change misses are
+corrected.
+
 ## final-107-fixed3 — reverted prompt revision (kept for honesty)
 Same policy with a stricter prompt that tried to route every money or
 stay-change message to Confirm. Overall 77.2%; decisive 82.5% (n=57);
