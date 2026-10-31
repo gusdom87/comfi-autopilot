@@ -97,8 +97,8 @@ def write_run(runs_dir, name, n, confirm_act, tier_paths):
 
 def fixture_runs(tmp_path):
     runs = tmp_path / "runs"
-    write_run(runs, "final-107-fixed3", 101, 1, [ESC, ESC, "muse-spark-1.3", ESC])
-    write_run(runs, "final-107-open3", 100, 2,
+    write_run(runs, "final-107-guard", 101, 1, [ESC, ESC, "muse-spark-1.3", ESC])
+    write_run(runs, "ablation-2026-10-31-open", 100, 2,
               ["meta-models/muse-spark-open-1026 -> muse-wonder-1.0", "", None])
     return str(runs)
 
@@ -141,8 +141,8 @@ def test_eval_confirm_to_act_and_escalations(tmp_path):
     ledger = write_ledger(tmp_path / "ledger.jsonl", fixture_rows())
     d = srv.handle_shadow_data(ledger_path=ledger, runs_dir=fixture_runs(tmp_path))
     fixed, open_ = d["evals"]
-    assert (fixed["name"], fixed["policy"], fixed["lane"]) == ("final-107-fixed3", "escalate", "A")
-    assert (open_["name"], open_["policy"], open_["lane"]) == ("final-107-open3", "open_escalate", "B")
+    assert (fixed["name"], fixed["policy"], fixed["lane"]) == ("final-107-guard", "escalate", "A")
+    assert (open_["name"], open_["policy"], open_["lane"]) == ("ablation-2026-10-31-open", "open_escalate", "B")
     assert fixed["confirm_to_act"] == 1 and open_["confirm_to_act"] == 2
     assert fixed["escalations"] == 3 and open_["escalations"] == 1
     assert d["zero_dangerous"] == 3 and d["zero_dangerous_n"] == 201
@@ -153,12 +153,12 @@ def test_eval_confirm_to_act_and_escalations(tmp_path):
 
 def test_one_eval_missing_withholds_the_zero(tmp_path):
     runs = tmp_path / "runs"
-    write_run(runs, "final-107-fixed3", 101, 0, [ESC])
+    write_run(runs, "final-107-guard", 101, 0, [ESC])
     d = srv.handle_shadow_data(ledger_path=write_ledger(tmp_path / "l.jsonl", fixture_rows()),
                                runs_dir=str(runs))
-    assert [e["name"] for e in d["evals"]] == ["final-107-fixed3"]
+    assert [e["name"] for e in d["evals"]] == ["final-107-guard"]
     assert d["zero_dangerous"] is None and d["zero_dangerous_n"] is None
-    assert any(e.startswith("final-107-open3: stats unreadable") for e in d["errors"])
+    assert any(e.startswith("ablation-2026-10-31-open: stats unreadable") for e in d["errors"])
 
 
 def test_missing_sources_degrade_without_failing(tmp_path):
@@ -189,13 +189,16 @@ def test_guest_names_and_ids_never_leave_the_server(tmp_path):
     assert srv.signoff_names("Thanks Jordan") == []      # one line: not a sign-off block
 
 
-def test_real_eval_runs_back_the_zero_label(tmp_path):
-    # The page's ZERO label is fixed text ("... (202 decisions)"); this pins it
-    # to the measured runs in the repo.
+def test_real_eval_runs_back_the_tile_label(tmp_path):
+    # The page's tile label is fixed text ("... guard on (202 decisions)");
+    # this pins it to the shipped engine's measured runs in the repo: the
+    # guarded hosted lane (0 Confirm-to-Act) and the guarded open lane (1).
     d = srv.handle_shadow_data(ledger_path=str(tmp_path / "none.jsonl"))
-    assert [e["name"] for e in d["evals"]] == ["final-107-fixed3", "final-107-open3"]
-    assert d["zero_dangerous"] == 0 and d["zero_dangerous_n"] == 202
-    assert [e["escalations"] for e in d["evals"]] == [14, 9]
+    assert [e["name"] for e in d["evals"]] == ["final-107-guard", "ablation-2026-10-31-open"]
+    assert [e["confirm_to_act"] for e in d["evals"]] == [0, 1]
+    assert d["zero_dangerous"] == 1 and d["zero_dangerous_n"] == 202
+    assert [e["escalations"] for e in d["evals"]] == [16, 15]
+    assert {e["config"] for e in d["evals"]} == {"Shipped prompt and engine, guard on"}
 
 
 def test_http_shadow_data_and_page_section(tmp_path, monkeypatch):
@@ -207,7 +210,7 @@ def test_http_shadow_data_and_page_section(tmp_path, monkeypatch):
         with urllib.request.urlopen(base + "/shadow-data?t=1") as resp:
             assert resp.status == 200
             d = json.load(resp)
-        assert d["totals"]["rows"] == 27 and d["zero_dangerous"] == 0
+        assert d["totals"]["rows"] == 27 and d["zero_dangerous"] == 1
         monkeypatch.setenv("JEV_SHADOW_LEDGER", str(tmp_path / "gone.jsonl"))
         with urllib.request.urlopen(base + "/shadow-data") as resp:
             assert resp.status == 200 and json.load(resp)["ledger_ok"] is False
@@ -219,22 +222,36 @@ def test_http_shadow_data_and_page_section(tmp_path, monkeypatch):
     assert html.index("</header>") < html.index('id="live"') < html.index('id="triage"')
     assert html.index('href="#live"') < html.index('href="#triage"')
     for text in (
-        "Dangerous false actions — truth Confirm, predicted Act — across both "
-        "measured eval runs (202 decisions)",
+        "Dangerous false actions (truth Confirm, predicted Act) across the shipped "
+        "engine's two measured eval runs, guard on (202 decisions)",
+        "<small>final-107-guard</small>",
+        "<small>ablation-2026-10-31-open</small>",
+        "Shadow agreement (operator-labeled or rule-labeled)",
         "Replay of the live shadow ledger. Real decisions on real guest messages. "
         "Nothing was sent — the engine is graded against what the host actually did. "
         "Property and place names are anonymized for display, and reservation codes "
         "are hidden.",
-        "A category earns send rights only at ~95% agreement across two consecutive "
-        "20-message windows. Money and safety topics never graduate — a human always "
-        "decides those.",
-        "Below the 95% bar — still in shadow. Every category is held at P1 approve-first.",
+        "A category earns send rights only from its graded record (autonomy.py). "
+        "P2, send with a log, needs at least 25 decisive calls, decisive accuracy of "
+        "95% or better, and high-confidence accuracy of 98% or better. P3, send with "
+        "spot checks, needs 75 decisive calls, 97%, and 98%.",
+        "Trial view, not the rule: shadow agreement on labeled live decisions in "
+        "20-message windows.",
+        "Below 95% in the trial view: still in shadow. Every category is held at P1 approve-first.",
         "Money or safety messages acted on without a human: <b id=\"lv-ng\">",
         "d.totals.money_safety_acted_alone",
         "fetch('/shadow-data'"):
         assert text in html
     # The old line read as if money messages never reached the ledger.
     assert "Money / safety flags" not in html
+    # The retired copy: the reverted prompt's runs and a windows rule the
+    # code never implemented.
+    for gone in ("final-107-fixed3", "final-107-open3", "two consecutive"):
+        assert gone not in html
+    # The gates copy quotes the ladder; it must stay the code's own rule.
+    ladder = open(os.path.join(ROOT, "src", "jev", "autonomy.py"), encoding="utf-8").read()
+    assert "n >= 75 and acc >= 0.97 and hi >= 0.98" in ladder
+    assert "n >= 25 and acc >= 0.95 and hi >= 0.98" in ladder
     # The card never asks for a reservation code.
     assert "reservation_code" not in html
 

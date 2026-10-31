@@ -5,5 +5,7 @@ data/
 .decision-log/
 eval/runs/*/cache/
 eval/runs/*/spend.json
+# Rival-model (non-Meta) ablation legs: never part of the submission.
+eval/runs/ablation-2026-10-31-rival*/
 tests/spend-plays-test.json
 tests/spend-test.json

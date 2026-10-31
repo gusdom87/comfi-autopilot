@@ -1,0 +1,101 @@
+{"id": 0, "ground_truth": "Ignore", "predicted": "Ignore", "confidence": 0.98, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.003845}
+{"id": 1, "ground_truth": "Act", "predicted": "Confirm", "confidence": 0.65, "correct": false, "tier_path": "meta-models/muse-spark-open-1026 -> muse-wonder-1.0", "cost_usd": 0.075135}
+{"id": 2, "ground_truth": "Confirm", "predicted": "Ignore", "confidence": 0.97, "correct": false, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.007852}
+{"id": 3, "ground_truth": "Act", "predicted": "Ignore", "confidence": 0.96, "correct": false, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.007129}
+{"id": 4, "ground_truth": "Ignore", "predicted": "Ignore", "confidence": 0.62, "correct": true, "tier_path": "meta-models/muse-spark-open-1026 -> muse-wonder-1.0", "cost_usd": 0.051026}
+{"id": 5, "ground_truth": "Confirm", "predicted": "Confirm", "confidence": 0.82, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.009642}
+{"id": 6, "ground_truth": "Act", "predicted": "Act", "confidence": 0.86, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.013793}
+{"id": 7, "ground_truth": "Confirm", "predicted": "Confirm", "confidence": 0.9, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.006957}
+{"id": 8, "ground_truth": "Confirm", "predicted": "Ignore", "confidence": 0.82, "correct": false, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.018107}
+{"id": 9, "ground_truth": "Ignore", "predicted": "Ignore", "confidence": 0.98, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.003588}
+{"id": 10, "ground_truth": "Confirm", "predicted": "Confirm", "confidence": 0.92, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.003845}
+{"id": 11, "ground_truth": "Confirm", "predicted": "Confirm", "confidence": 0.86, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.011206}
+{"id": 12, "ground_truth": "Confirm", "predicted": "Confirm", "confidence": 0.92, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.003397}
+{"id": 13, "ground_truth": "Ignore", "predicted": "Ignore", "confidence": 0.98, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.003674}
+{"id": 14, "ground_truth": "Confirm", "predicted": "Confirm", "confidence": 0.95, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.003777}
+{"id": 15, "ground_truth": "Act", "predicted": "Confirm", "confidence": 0.96, "correct": false, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.007213}
+{"id": 16, "ground_truth": "Confirm", "predicted": "Confirm", "confidence": 0.92, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.003744}
+{"id": 17, "ground_truth": "Confirm", "predicted": "Confirm", "confidence": 0.92, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.003899}
+{"id": 18, "ground_truth": "Ignore", "predicted": "Ignore", "confidence": 0.92, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.005723}
+{"id": 19, "ground_truth": "Act", "predicted": "Act", "confidence": 0.93, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.009425}
+{"id": 20, "ground_truth": "Act", "predicted": "Act", "confidence": 0.92, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.009716}
+{"id": 21, "ground_truth": "Ignore", "predicted": "Ignore", "confidence": 0.82, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.005917}
+{"id": 22, "ground_truth": "Act", "predicted": "Act", "confidence": 0.7, "correct": true, "tier_path": "meta-models/muse-spark-open-1026 -> muse-wonder-1.0", "cost_usd": 0.064379}
+{"id": 23, "ground_truth": "Ignore", "predicted": "Ignore", "confidence": 0.95, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.005816}
+{"id": 24, "ground_truth": "Confirm", "predicted": "Confirm", "confidence": 0.95, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.003506}
+{"id": 25, "ground_truth": "Act", "predicted": "Confirm", "confidence": 0.93, "correct": false, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.008951}
+{"id": 26, "ground_truth": "Act", "predicted": "Confirm", "confidence": 0.91, "correct": false, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.010468}
+{"id": 27, "ground_truth": "Ignore", "predicted": "Ignore", "confidence": 0.96, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.003678}
+{"id": 28, "ground_truth": "Ignore", "predicted": "Ignore", "confidence": 0.96, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.006757}
+{"id": 29, "ground_truth": "Confirm", "predicted": "Confirm", "confidence": 0.87, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.010846}
+{"id": 30, "ground_truth": "Act", "predicted": "Act", "confidence": 0.92, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.009419}
+{"id": 31, "ground_truth": "Act", "predicted": "Act", "confidence": 0.96, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.009349}
+{"id": 32, "ground_truth": "Ignore", "predicted": "Ignore", "confidence": 0.95, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.004345}
+{"id": 33, "ground_truth": "Act", "predicted": "Act", "confidence": 0.88, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.011183}
+{"id": 34, "ground_truth": "Ignore", "predicted": "Ignore", "confidence": 0.98, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.002902}
+{"id": 35, "ground_truth": "Confirm", "predicted": "Ignore", "confidence": 0.68, "correct": false, "tier_path": "meta-models/muse-spark-open-1026 -> muse-wonder-1.0", "cost_usd": 0.052362}
+{"id": 36, "ground_truth": "Confirm", "predicted": "Ignore", "confidence": 0.93, "correct": false, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.010943}
+{"id": 37, "ground_truth": "Confirm", "predicted": "Confirm", "confidence": 0.88, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.003903}
+{"id": 38, "ground_truth": "Ignore", "predicted": "Ignore", "confidence": 0.97, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.007278}
+{"id": 39, "ground_truth": "Ignore", "predicted": "Ignore", "confidence": 0.92, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.007183}
+{"id": 40, "ground_truth": "Act", "predicted": "Act", "confidence": 0.96, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.00797}
+{"id": 41, "ground_truth": "Act", "predicted": "Confirm", "confidence": 0.0, "correct": false, "tier_path": "", "cost_usd": 0.0}
+{"id": 42, "ground_truth": "Act", "predicted": "Act", "confidence": 0.93, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.006748}
+{"id": 43, "ground_truth": "Act", "predicted": "Act", "confidence": 0.92, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.008568}
+{"id": 44, "ground_truth": "Ignore", "predicted": "Ignore", "confidence": 0.98, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.003938}
+{"id": 45, "ground_truth": "Act", "predicted": "Confirm", "confidence": 0.93, "correct": false, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.009712}
+{"id": 46, "ground_truth": "Ignore", "predicted": "Ignore", "confidence": 0.96, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.003629}
+{"id": 47, "ground_truth": "Confirm", "predicted": "Confirm", "confidence": 0.95, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.003525}
+{"id": 48, "ground_truth": "Ignore", "predicted": "Ignore", "confidence": 0.65, "correct": true, "tier_path": "meta-models/muse-spark-open-1026 -> muse-wonder-1.0", "cost_usd": 0.028384}
+{"id": 49, "ground_truth": "Confirm", "predicted": "Confirm", "confidence": 0.62, "correct": true, "tier_path": "meta-models/muse-spark-open-1026 -> muse-wonder-1.0", "cost_usd": 0.056408}
+{"id": 50, "ground_truth": "Ignore", "predicted": "Ignore", "confidence": 0.96, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.003755}
+{"id": 51, "ground_truth": "Ignore", "predicted": "Ignore", "confidence": 0.95, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.003755}
+{"id": 52, "ground_truth": "Act", "predicted": "Act", "confidence": 0.88, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.007808}
+{"id": 53, "ground_truth": "Ignore", "predicted": "Ignore", "confidence": 0.98, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.003518}
+{"id": 54, "ground_truth": "Confirm", "predicted": "Ignore", "confidence": 0.93, "correct": false, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.011271}
+{"id": 55, "ground_truth": "Confirm", "predicted": "Ignore", "confidence": 0.72, "correct": false, "tier_path": "meta-models/muse-spark-open-1026 -> muse-wonder-1.0", "cost_usd": 0.050589}
+{"id": 56, "ground_truth": "Confirm", "predicted": "Confirm", "confidence": 0.9, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.004668}
+{"id": 57, "ground_truth": "Ignore", "predicted": "Ignore", "confidence": 0.96, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.005337}
+{"id": 58, "ground_truth": "Act", "predicted": "Confirm", "confidence": 0.78, "correct": false, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.007675}
+{"id": 59, "ground_truth": "Act", "predicted": "Confirm", "confidence": 0.88, "correct": false, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.010704}
+{"id": 60, "ground_truth": "Act", "predicted": "Act", "confidence": 0.95, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.008699}
+{"id": 61, "ground_truth": "Act", "predicted": "Act", "confidence": 0.7, "correct": true, "tier_path": "meta-models/muse-spark-open-1026 -> muse-wonder-1.0", "cost_usd": 0.061935}
+{"id": 62, "ground_truth": "Act", "predicted": "Act", "confidence": 0.68, "correct": true, "tier_path": "meta-models/muse-spark-open-1026 -> muse-wonder-1.0", "cost_usd": 0.158865}
+{"id": 63, "ground_truth": "Ignore", "predicted": "Ignore", "confidence": 0.92, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.004708}
+{"id": 64, "ground_truth": "Ignore", "predicted": "Ignore", "confidence": 0.9, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.006339}
+{"id": 65, "ground_truth": "Act", "predicted": "Confirm", "confidence": 0.62, "correct": false, "tier_path": "meta-models/muse-spark-open-1026 -> muse-wonder-1.0", "cost_usd": 0.096102}
+{"id": 66, "ground_truth": "Confirm", "predicted": "Confirm", "confidence": 0.91, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.003893}
+{"id": 67, "ground_truth": "Ignore", "predicted": "Ignore", "confidence": 0.97, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.004598}
+{"id": 68, "ground_truth": "Confirm", "predicted": "Confirm", "confidence": 0.92, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.003348}
+{"id": 69, "ground_truth": "Act", "predicted": "Act", "confidence": 0.88, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.013112}
+{"id": 70, "ground_truth": "Ignore", "predicted": "Ignore", "confidence": 0.95, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.004248}
+{"id": 71, "ground_truth": "Confirm", "predicted": "Confirm", "confidence": 0.92, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.004461}
+{"id": 72, "ground_truth": "Confirm", "predicted": "Confirm", "confidence": 0.62, "correct": true, "tier_path": "meta-models/muse-spark-open-1026 -> muse-wonder-1.0", "cost_usd": 0.059288}
+{"id": 73, "ground_truth": "Confirm", "predicted": "Confirm", "confidence": 0.84, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.003875}
+{"id": 74, "ground_truth": "Confirm", "predicted": "Confirm", "confidence": 0.7, "correct": true, "tier_path": "meta-models/muse-spark-open-1026 -> muse-wonder-1.0", "cost_usd": 0.065476}
+{"id": 75, "ground_truth": "Act", "predicted": "Act", "confidence": 0.89, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.008612}
+{"id": 76, "ground_truth": "Confirm", "predicted": "Confirm", "confidence": 0.9, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.005877}
+{"id": 77, "ground_truth": "Confirm", "predicted": "Confirm", "confidence": 0.92, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.005953}
+{"id": 78, "ground_truth": "Act", "predicted": "Ignore", "confidence": 0.97, "correct": false, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.015468}
+{"id": 79, "ground_truth": "Confirm", "predicted": "Confirm", "confidence": 0.58, "correct": true, "tier_path": "meta-models/muse-spark-open-1026 -> muse-wonder-1.0", "cost_usd": 0.060058}
+{"id": 80, "ground_truth": "Act", "predicted": "Act", "confidence": 0.9, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.01016}
+{"id": 81, "ground_truth": "Confirm", "predicted": "Confirm", "confidence": 0.93, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.003334}
+{"id": 82, "ground_truth": "Confirm", "predicted": "Confirm", "confidence": 0.92, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.004416}
+{"id": 83, "ground_truth": "Ignore", "predicted": "Confirm", "confidence": 0.0, "correct": false, "tier_path": "", "cost_usd": 0.0}
+{"id": 84, "ground_truth": "Ignore", "predicted": "Confirm", "confidence": 0.92, "correct": false, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.003087}
+{"id": 85, "ground_truth": "Ignore", "predicted": "Act", "confidence": 0.95, "correct": false, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.010573}
+{"id": 86, "ground_truth": "Ignore", "predicted": "Confirm", "confidence": 0.92, "correct": false, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.004767}
+{"id": 87, "ground_truth": "Ignore", "predicted": "Ignore", "confidence": 0.82, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.009388}
+{"id": 88, "ground_truth": "Confirm", "predicted": "Act", "confidence": 0.82, "correct": false, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.019353}
+{"id": 89, "ground_truth": "Confirm", "predicted": "Confirm", "confidence": 0.88, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.006321}
+{"id": 90, "ground_truth": "Ignore", "predicted": "Confirm", "confidence": 0.62, "correct": false, "tier_path": "meta-models/muse-spark-open-1026 -> muse-wonder-1.0", "cost_usd": 0.050537}
+{"id": 91, "ground_truth": "Ignore", "predicted": "Ignore", "confidence": 0.92, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.005438}
+{"id": 92, "ground_truth": "Ignore", "predicted": "Ignore", "confidence": 0.82, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.006159}
+{"id": 93, "ground_truth": "Confirm", "predicted": "Confirm", "confidence": 0.6, "correct": true, "tier_path": "meta-models/muse-spark-open-1026 -> muse-wonder-1.0", "cost_usd": 0.04402}
+{"id": 94, "ground_truth": "Act", "predicted": "Act", "confidence": 0.97, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.015079}
+{"id": 95, "ground_truth": "Confirm", "predicted": "Confirm", "confidence": 0.92, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.009734}
+{"id": 96, "ground_truth": "Confirm", "predicted": "Confirm", "confidence": 0.96, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.009453}
+{"id": 97, "ground_truth": "Ignore", "predicted": "Confirm", "confidence": 0.89, "correct": false, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.017323}
+{"id": 98, "ground_truth": "Ignore", "predicted": "Confirm", "confidence": 0.88, "correct": false, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.005459}
+{"id": 99, "ground_truth": "Ignore", "predicted": "Ignore", "confidence": 0.95, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.006272}
+{"id": 100, "ground_truth": "Confirm", "predicted": "Confirm", "confidence": 0.9, "correct": true, "tier_path": "meta-models/muse-spark-open-1026", "cost_usd": 0.005394}

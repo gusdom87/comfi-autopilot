@@ -461,7 +461,7 @@
              border-radius: var(--r-lg); background-color: var(--panel); background-image: var(--grain);
              background-size: var(--grain-size); background-position: var(--grain-pos); box-shadow: var(--bevel), var(--pressed); }
   .lv-stat-v { font: 900 44px/1 var(--font-display); letter-spacing: 0; overflow-wrap: anywhere; }
-  .lv-stat-v small { margin-left: 6px; font: 700 20px/1 var(--font-display); color: var(--muted); }
+  .lv-stat-v small { margin-left: 6px; font: 700 20px/1 var(--font-display); color: var(--muted); white-space: nowrap; }
   .lv-verdicts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; font: 900 26px/1 var(--font-display); }
   .lv-verdicts > span { display: inline-flex; align-items: center; gap: 7px; }
   .badge.lv-mini { min-width: 0; padding: 5px 7px 4px; font-size: 10px; }
@@ -664,17 +664,18 @@
     <section id="live" class="lv" aria-labelledby="h-live">
       <div class="sec-head"><h2 class="display sec-title" id="h-live"><span class="lv-pulse lv-headmark" aria-hidden="true"></span>Live operation</h2><p class="sec-deck">Real decisions, graded in shadow</p></div>
       <!-- Every number in this section is computed by GET /shadow-data from the live shadow
-           ledger and the two measured eval runs. Nothing here is staged or typed in. -->
+           ledger and the shipped engine's two measured eval runs (guard on, one per lane).
+           Nothing here is staged or typed in. -->
       <div class="lv-board">
         <div class="lv-zero">
-          <span class="lv-k">Both measured eval runs</span>
+          <span class="lv-k">Shipped engine, both lanes</span>
           <span class="lv-zero-num" id="lv-zero">—</span>
-          <p class="lv-zero-label">Dangerous false actions — truth Confirm, predicted Act — across both measured eval runs (202 decisions)</p>
+          <p class="lv-zero-label">Dangerous false actions (truth Confirm, predicted Act) across the shipped engine's two measured eval runs, guard on (202 decisions)</p>
           <p class="lv-zero-src" id="lv-zero-src"></p>
         </div>
         <div class="lv-stats">
           <div class="lv-stat"><span class="lv-k">Decisions in the live shadow ledger</span><span class="lv-stat-v" id="lv-n">—</span></div>
-          <div class="lv-stat"><span class="lv-k">Shadow agreement (operator-labeled)</span><span class="lv-stat-v" id="lv-agree">—</span></div>
+          <div class="lv-stat"><span class="lv-k">Shadow agreement (operator-labeled or rule-labeled)</span><span class="lv-stat-v" id="lv-agree">—</span></div>
           <div class="lv-stat"><span class="lv-k">Verdict counts</span><span class="lv-verdicts" id="lv-verdicts">—</span></div>
           <div class="lv-stat"><span class="lv-k">Escalations to Muse Wonder</span><span class="lv-stat-v" id="lv-esc">—</span></div>
           <div class="lv-stat"><span class="lv-k">Model spend, live shadow</span><span class="lv-stat-v" id="lv-cost">—</span></div>
@@ -692,13 +693,13 @@
         <p class="lv-off" id="lv-feed-off"></p>
       </div>
 
-      <div class="lv-head"><h3 class="display">Two measured runs</h3></div>
+      <div class="lv-head"><h3 class="display">Two measured runs of the shipped engine</h3></div>
       <div class="lv-evals" id="lv-evals"></div>
       <p class="lv-off" id="lv-evals-off"></p>
       <div class="panel lv-routes">
         <h4>Routing</h4>
         <div class="lv-lane">
-          <div class="lv-lane-k">Lane A<small>final-107-fixed3</small></div>
+          <div class="lv-lane-k">Lane A<small>final-107-guard</small></div>
           <div class="lv-flow">
             <div class="lv-box">Guest message</div>
             <div class="lv-arrow"></div>
@@ -712,7 +713,7 @@
           </div>
         </div>
         <div class="lv-lane">
-          <div class="lv-lane-k">Lane B<small>final-107-open3</small></div>
+          <div class="lv-lane-k">Lane B<small>ablation-2026-10-31-open</small></div>
           <div class="lv-flow">
             <div class="lv-box">Guest message</div>
             <div class="lv-arrow"></div>
@@ -729,15 +730,15 @@
 
       <div class="panel lv-gates">
         <div class="lv-head"><h3 class="display">Autonomy gates</h3></div>
-        <p class="lv-rule">A category earns send rights only at ~95% agreement across two consecutive 20-message windows. Money and safety topics never graduate — a human always decides those.</p>
+        <p class="lv-rule">A category earns send rights only from its graded record (autonomy.py). P2, send with a log, needs at least 25 decisive calls, decisive accuracy of 95% or better, and high-confidence accuracy of 98% or better. P3, send with spot checks, needs 75 decisive calls, 97%, and 98%. Charging a guest is never on the ladder, and money and safety topics never graduate: a human always decides those.</p>
         <div class="lv-wins">
-          <div class="lv-win"><span class="lv-k">Window 1 (20 labeled)</span><div class="lv-win-v" id="lv-w1">—</div><div class="lv-bar lv-has-mark"><i id="lv-w1-bar" style="width:0"></i></div></div>
-          <div class="lv-win"><span class="lv-k">Window 2</span><div class="lv-win-v" id="lv-w2">—</div><div class="lv-bar lv-has-mark"><i id="lv-w2-bar" style="width:0"></i></div></div>
+          <div class="lv-win"><span class="lv-k">Trial window 1 (20 labeled)</span><div class="lv-win-v" id="lv-w1">—</div><div class="lv-bar lv-has-mark"><i id="lv-w1-bar" style="width:0"></i></div></div>
+          <div class="lv-win"><span class="lv-k">Trial window 2</span><div class="lv-win-v" id="lv-w2">—</div><div class="lv-bar lv-has-mark"><i id="lv-w2-bar" style="width:0"></i></div></div>
         </div>
-        <p class="fine">Bars show agreement; the navy line marks the 95% bar.</p>
+        <p class="fine">Trial view, not the rule: shadow agreement on labeled live decisions in 20-message windows. Bars show agreement; the navy line marks 95%.</p>
         <p class="lv-hold" id="lv-hold"></p>
         <table class="lv-table">
-          <thead><tr><th scope="col">Category</th><th scope="col">Engine calls graded</th><th scope="col">Operator agreed</th><th scope="col">Agreement</th></tr></thead>
+          <thead><tr><th scope="col">Category</th><th scope="col">Engine calls graded</th><th scope="col">Label agreed</th><th scope="col">Agreement</th></tr></thead>
           <tbody id="lv-cat-body"></tbody>
         </table>
         <p class="lv-ng">Money or safety messages acted on without a human: <b id="lv-ng">—</b></p>
@@ -1603,7 +1604,8 @@
         }).join('') + '</tr>').join('');
         return '<article class="panel lv-run">' +
           '<div class="lv-run-head"><span class="lv-k">Lane ' + esc(e.lane) + ' · policy ' + esc(e.policy) + '</span>' +
-          '<h4>' + esc(e.name) + '</h4><p>' + esc(e.first_pass) + ' first pass, ' + esc(e.escalation) + ' escalation</p></div>' +
+          '<h4>' + esc(e.name) + '</h4><p>' + esc(e.first_pass) + ' first pass, ' + esc(e.escalation) + ' escalation' +
+          (e.config ? '. ' + esc(e.config) : '') + '</p></div>' +
           '<dl class="lv-kv">' +
             kv('Overall accuracy', pctOf(s.accuracy)) +
             kv('Decisive accuracy', pctOf(s.decisive_accuracy), s.decisive_n != null ? 'n = ' + s.decisive_n : '') +
@@ -1646,8 +1648,8 @@
         $('lv-w2-bar').style.width = (w2 && num(w2.pct) != null ? w2.pct : 0) + '%';
         const cleared = ok && w1.n >= w1.size && w2.n >= w2.size && w1.pct >= 95 && w2.pct >= 95;
         $('lv-hold').textContent = !ok ? '' : cleared
-          ? 'Both windows are at or above the 95% bar.'
-          : 'Below the 95% bar — still in shadow. Every category is held at P1 approve-first.';
+          ? 'Both trial windows are at or above 95%. Send rights still come only from the ladder rule above.'
+          : 'Below 95% in the trial view: still in shadow. Every category is held at P1 approve-first.';
         $('lv-cat-body').innerHTML = !ok ? '' : CATS.map(c => {
           const b = d.by_category[c] || {};
           return '<tr><td><span class="badge lv-mini ' + TONE[c] + '">' + c + '</span></td><td>' + esc(b.called) +

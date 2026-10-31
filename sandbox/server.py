@@ -32,7 +32,8 @@ from jev.types import FAIL_SAFE  # noqa: E402
 
 HERE = os.path.dirname(__file__)
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-# The run of record's graded eval ledger: the sandbox's default book
+# The unguarded run's graded eval ledger (final-107-live; the guarded
+# run keeps every category at P1 too): the sandbox's default book
 # when neither a ledger_path argument nor JEV_LEDGER is given.
 DEFAULT_LEDGER = os.path.join(ROOT, "eval", "runs", "final-107-live",
                               "ledger.json")
@@ -64,7 +65,7 @@ def handle_triage(payload: dict, decide_fn=_decide, ledger_path: str = "") -> di
 
 # -- plays -------------------------------------------------------------
 # One engine over the staged fixture world, shared by every request.
-# It reads the same graded eval ledger (run of record) as triage. No
+# It reads the same graded eval ledger (final-107-live) as triage. No
 # category has cleared the ladder and the play action keys carry no
 # graded stats, so every action right is P1 (approve_first): drafts
 # are produced and steps are HELD, exactly what the demo needs to
@@ -245,7 +246,9 @@ def handle_get_run(run_id: str, runs=None) -> dict:
 # -- live shadow data --------------------------------------------------
 # GET /shadow-data: the live shadow ledger (real engine decisions on
 # real guest messages, graded against what the host did; nothing was
-# sent) and the two measured eval runs. Computed fresh per request from
+# sent) and the shipped engine's two measured eval runs, one per lane,
+# both with the stay-change/money guard on (the engine always applies
+# it: tiers.decide wraps apply_guard). Computed fresh per request from
 # the files, read-only, with property names, towns and reservation codes
 # anonymized for display (see the display anonymizer below). A missing
 # or unreadable source becomes an entry in `errors`; the endpoint never
@@ -253,14 +256,18 @@ def handle_get_run(run_id: str, runs=None) -> dict:
 SHADOW_LEDGER_DEFAULT = "/home/hatch/workspace/hackathon/shadow-live/ledger.jsonl"
 EVAL_RUNS_DIR = os.path.join(HERE, "..", "eval", "runs")
 EVAL_RUNS = (
-    {"name": "final-107-fixed3", "lane": "A", "policy": "escalate",
+    {"name": "final-107-guard", "lane": "A", "policy": "escalate",
      "first_pass": "Muse Spark (Meta Model API)",
-     "escalation": "Muse Wonder"},
-    {"name": "final-107-open3", "lane": "B", "policy": "open_escalate",
+     "escalation": "Muse Wonder",
+     "config": "Shipped prompt and engine, guard on"},
+    {"name": "ablation-2026-10-31-open", "lane": "B", "policy": "open_escalate",
      "first_pass": "Muse Spark Open (Baseten, open weights)",
-     "escalation": "Muse Wonder"},
+     "escalation": "Muse Wonder",
+     "config": "Shipped prompt and engine, guard on"},
 )
 CATEGORIES = ("Act", "Confirm", "Ignore")
+# Trial view only: shadow agreement in 20-row windows of labeled decisions,
+# a display summary. Send rights come from autonomy.right_for, never these.
 WINDOW = 20
 STATS_KEYS = ("accuracy", "decisive_accuracy", "decisive_n", "n",
               "total_cost_usd", "high_conf_accuracy", "high_conf_n",
@@ -539,7 +546,8 @@ def handle_shadow_data(ledger_path: str = "", runs_dir: str = "") -> dict:
                          for s in EVAL_RUNS) if e is not None]
     both = len(evals) == len(EVAL_RUNS)
     out["evals"] = evals
-    # The ZERO is only claimed across both runs; with one missing it is None.
+    # The Confirm-to-Act count is only shown across both runs; with one
+    # missing it is None.
     out["zero_dangerous"] = sum(e["confirm_to_act"] for e in evals) if both else None
     out["zero_dangerous_n"] = sum(int(e["stats"].get("n") or 0) for e in evals) if both else None
     out["escalation_threshold"] = ESCALATION_THRESHOLD

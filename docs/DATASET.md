@@ -34,11 +34,15 @@ the scored set to n=107: Confirm 39, Act 32, Ignore 36.
 Note on counts: the roughly 300 messages the operator hand-labeled in the pilot are the full teaching set; the 109 graded reviews and the 107-row final eval set are the graded subset drawn from it. The final eval ran
 on this 107-row set with the shipped prompt (n=101 scored, 6 few-shot
 examples excluded): overall accuracy 80.2%, decisive accuracy 82.3%,
-high-confidence accuracy 79.5%. The README numbers are from this run.
+high-confidence accuracy 79.5% (run final-107-live), the model's raw record
+without the guard. The shipped engine always applies the stay-change/money
+guard; its run on the same set (final-107-guard) scored 77.2% overall with
+zero Confirm-to-Act errors, and the README leads with it.
 
 Known limits: n=89 (now 107) is small; labels inherit the pilot's category definitions;
 message previews are truncated by the source system. Every reported number
 carries its n, and the confidence ledger treats this set as a floor, not a
 ceiling. Beyond this set, a log-only shadow mode scores live inbound guest
-messages and never sends. Its decisions are graded by hand only when
-reviewed. No shadow results are published or claimed.
+messages and never sends. Its decisions are labeled only when reviewed,
+by the operator or by one of the operator's standing rules. Its record is
+shown on the dashboard as a live record, not claimed as an eval result.
