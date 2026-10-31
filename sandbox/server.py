@@ -1,12 +1,16 @@
 """Judge sandbox server (stdlib only). Serves the page, POST /triage,
-and the plays endpoints (POST /play, POST /event, GET /run/<id>).
+the plays endpoints (POST /play, POST /event, GET /run/<id>), and
+GET /shadow-data (the live shadow ledger and the two measured eval
+runs, aggregated read-only per request).
 All model calls happen server-side; the API key never reaches the
 browser. Play runs live in memory, on the staged fixture world; every
 play effect is simulated or held for approval - nothing real is sent.
 Run: JEV_SANDBOX_PORT=8791 python3 sandbox/server.py"""
 import json
 import os
+import re
 import sys
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
@@ -21,6 +25,7 @@ from jev.plays.camera_check import (  # noqa: E402
     handle_post_turnover_event, handle_sunset_check_event,
     handle_vendor_window_event)
 from jev.plays.cleaner_done import handle_cleaner_done_event  # noqa: E402
+from jev.tiers import ESCALATION_THRESHOLD  # noqa: E402
 from jev.tiers import decide as _decide  # noqa: E402
 from jev.types import FAIL_SAFE  # noqa: E402
 
@@ -224,6 +229,204 @@ def handle_get_run(run_id: str, runs=None) -> dict:
     return run.to_dict()
 
 
+# -- live shadow data --------------------------------------------------
+# GET /shadow-data: the live shadow ledger (real engine decisions on
+# real guest messages, graded against what the host did; nothing was
+# sent) and the two measured eval runs. Computed fresh per request from
+# the files, read-only. A missing or unreadable source becomes an entry
+# in `errors`; the endpoint never fails.
+SHADOW_LEDGER_DEFAULT = "/home/hatch/workspace/hackathon/shadow-live/ledger.jsonl"
+EVAL_RUNS_DIR = os.path.join(HERE, "..", "eval", "runs")
+EVAL_RUNS = (
+    {"name": "final-107-fixed3", "lane": "A", "policy": "escalate",
+     "first_pass": "Muse Spark (Meta Model API)",
+     "escalation": "Muse Wonder"},
+    {"name": "final-107-open3", "lane": "B", "policy": "open_escalate",
+     "first_pass": "Muse Spark Open (Baseten, open weights)",
+     "escalation": "Muse Wonder"},
+)
+CATEGORIES = ("Act", "Confirm", "Ignore")
+WINDOW = 20
+STATS_KEYS = ("accuracy", "decisive_accuracy", "decisive_n", "n",
+              "total_cost_usd", "high_conf_accuracy", "high_conf_n",
+              "by_category", "confusion")
+# The page's fields only. The ledger's guest, property/reservation ids
+# and repo stamps are never sent to the browser.
+ROW_FIELDS = ("row_id", "decided_at", "message_at", "property", "listing",
+              "platform", "reservation_code", "message_text",
+              "engine_category", "confidence", "tier", "route", "reason",
+              "draft", "cost_usd", "answered_by_human", "host_outcome",
+              "host_reply_latency_min", "verdict", "verdict_basis",
+              "gus_category", "gus_draft_verdict", "gus_note",
+              "never_graduate", "never_graduate_topics")
+
+# A guest signing off on the message's last line ("...\n\nThanks\nSam").
+# The ledger keeps no guest name by design, so a name found there is
+# replaced with [name] in every text field of that row before it leaves
+# the server. Closing words are not names.
+_SIGNOFF_LINE = re.compile(
+    r"(?:(?i:thanks|thank you|cheers|best|regards|sincerely|warmly)[,!.]*\s+"
+    r"|[-–—~]\s*)?"
+    r"([A-Z][a-z]+(?:[ -][A-Z][a-z]+)?)[.!]?")
+_NOT_NAMES = {"thanks", "thank", "cheers", "best", "regards", "sincerely",
+              "warmly", "ok", "okay", "yes", "no", "sure", "perfect",
+              "great", "hello", "hi", "hey", "bye", "appreciated"}
+_SCRUBBED_TEXT = ("message_text", "draft", "reason", "gus_note",
+                  "verdict_basis")
+
+
+def signoff_names(text: str) -> list:
+    lines = [ln.strip() for ln in str(text or "").splitlines() if ln.strip()]
+    if len(lines) < 2:
+        return []
+    m = _SIGNOFF_LINE.fullmatch(lines[-1])
+    if not m:
+        return []
+    words = re.split(r"[ -]", m.group(1))
+    return [] if any(w.lower() in _NOT_NAMES for w in words) else words
+
+
+def scrub_row(row: dict) -> dict:
+    out = {k: row.get(k) for k in ROW_FIELDS if k in row}
+    names = signoff_names(out.get("message_text", ""))
+    if names:
+        name_re = re.compile(r"\b(?:%s)\b" % "|".join(map(re.escape, names)),
+                             re.IGNORECASE)
+        for k in _SCRUBBED_TEXT:
+            if isinstance(out.get(k), str):
+                out[k] = name_re.sub("[name]", out[k])
+    return out
+
+
+def _ts(value) -> float:
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).timestamp()
+    except ValueError:
+        return float("inf")
+
+
+def _pct(agree: int, n: int):
+    return round(100.0 * agree / n, 1) if n else None
+
+
+def _num(value) -> float:
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _labeled(row: dict) -> bool:
+    return bool(row.get("gus_category"))
+
+
+def _agrees(row: dict) -> bool:
+    return row.get("gus_category") == row.get("engine_category")
+
+
+def _read_ledger(path: str, errors: list) -> list:
+    try:
+        with open(path, encoding="utf-8") as fh:
+            lines = fh.readlines()
+    except FileNotFoundError:
+        errors.append("shadow ledger: not found")
+        return []
+    except (OSError, UnicodeDecodeError) as exc:
+        errors.append(f"shadow ledger: unreadable ({type(exc).__name__})")
+        return []
+    rows, bad = [], 0
+    for line in lines:
+        if not line.strip():
+            continue
+        try:
+            row = json.loads(line)
+        except ValueError:
+            bad += 1
+            continue
+        if isinstance(row, dict):
+            rows.append(row)
+        else:
+            bad += 1
+    if bad:
+        errors.append(f"shadow ledger: {bad} unreadable line(s) skipped")
+    # Stable: rows with the same decided_at keep their file order.
+    return sorted(rows, key=lambda r: _ts(r.get("decided_at")))
+
+
+def _window(rows: list) -> dict:
+    n = len(rows)
+    agree = sum(_agrees(r) for r in rows)
+    return {"n": n, "size": WINDOW, "agree": agree, "pct": _pct(agree, n)}
+
+
+def _ledger_summary(rows: list) -> dict:
+    labeled = [r for r in rows if _labeled(r)]
+    agree = sum(_agrees(r) for r in labeled)
+    totals = {
+        "rows": len(rows),
+        "by_category": {c: sum(r.get("engine_category") == c for r in rows)
+                        for c in CATEGORIES},
+        "labeled": len(labeled),
+        "labeled_agree": agree,
+        "labeled_agree_pct": _pct(agree, len(labeled)),
+        "escalations": sum("->" in str(r.get("tier") or "") for r in rows),
+        "cost_usd": round(sum(_num(r.get("cost_usd")) for r in rows), 6),
+        "never_graduate": sum(bool(r.get("never_graduate")) for r in rows),
+    }
+    w1 = _window(labeled[:WINDOW])
+    w1["partial"] = w1["n"] < WINDOW
+    windows = {"window_1": w1, "window_2": _window(labeled[WINDOW:])}
+    by_category = {}
+    for c in CATEGORIES:
+        called = [r for r in labeled if r.get("engine_category") == c]
+        agreed = sum(_agrees(r) for r in called)
+        by_category[c] = {"called": len(called), "agreed": agreed,
+                          "pct": _pct(agreed, len(called))}
+    return {"totals": totals, "windows": windows, "by_category": by_category}
+
+
+def _read_eval(spec: dict, runs_dir: str, errors: list):
+    run_dir = os.path.join(runs_dir, spec["name"])
+    try:
+        with open(os.path.join(run_dir, "stats.json"), encoding="utf-8") as fh:
+            stats = json.load(fh)
+        confirm_to_act = int(stats["confusion"]["Confirm"]["Act"])
+    except (OSError, ValueError, TypeError, KeyError, AttributeError) as exc:
+        errors.append(f"{spec['name']}: stats unreadable ({type(exc).__name__})")
+        return None
+    escalations = None
+    try:
+        with open(os.path.join(run_dir, "results.jsonl"), encoding="utf-8") as fh:
+            escalations = sum("->" in str(json.loads(ln).get("tier_path") or "")
+                              for ln in fh if ln.strip())
+    except (OSError, ValueError, AttributeError) as exc:
+        errors.append(f"{spec['name']}: results unreadable ({type(exc).__name__})")
+    return dict(spec, stats={k: stats.get(k) for k in STATS_KEYS},
+                escalations=escalations, confirm_to_act=confirm_to_act)
+
+
+def handle_shadow_data(ledger_path: str = "", runs_dir: str = "") -> dict:
+    errors: list = []
+    path = ledger_path or os.environ.get("JEV_SHADOW_LEDGER") or SHADOW_LEDGER_DEFAULT
+    n_errors = len(errors)
+    rows = _read_ledger(path, errors)
+    ledger_ok = rows or not any(e.startswith(("shadow ledger: not found",
+                                              "shadow ledger: unreadable"))
+                                for e in errors[n_errors:])
+    out = {"ledger_ok": bool(ledger_ok), "rows": [scrub_row(r) for r in rows],
+           **_ledger_summary(rows)}
+    evals = [e for e in (_read_eval(s, runs_dir or EVAL_RUNS_DIR, errors)
+                         for s in EVAL_RUNS) if e is not None]
+    both = len(evals) == len(EVAL_RUNS)
+    out["evals"] = evals
+    # The ZERO is only claimed across both runs; with one missing it is None.
+    out["zero_dangerous"] = sum(e["confirm_to_act"] for e in evals) if both else None
+    out["zero_dangerous_n"] = sum(int(e["stats"].get("n") or 0) for e in evals) if both else None
+    out["escalation_threshold"] = ESCALATION_THRESHOLD
+    out["errors"] = errors
+    return out
+
+
 def _send_json(handler, result: dict, status: int = 200) -> None:
     body = json.dumps(result).encode()
     handler.send_response(status)
@@ -238,6 +441,15 @@ class Handler(BaseHTTPRequestHandler):
         if self.path.startswith("/run/"):
             result = handle_get_run(self.path[len("/run/"):])
             _send_json(self, result, 404 if "error" in result else 200)
+            return
+        if self.path.split("?")[0] == "/shadow-data":
+            try:
+                result = handle_shadow_data()
+            except Exception as exc:  # never a 500: the page degrades quietly
+                result = {"ledger_ok": False, "rows": [], "evals": [],
+                          "zero_dangerous": None,
+                          "errors": [f"shadow data: failed ({type(exc).__name__})"]}
+            _send_json(self, result)
             return
         with open(os.path.join(HERE, "index.html"), "rb") as fh:
             body = fh.read()

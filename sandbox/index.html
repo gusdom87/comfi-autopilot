@@ -428,6 +428,199 @@
     html { scroll-behavior: auto; }
     .bigbtn, #go { transition: none; }
   }
+
+  /* ---- live operation (lv-): the live shadow ledger + the two measured runs.
+     Every number is filled from GET /shadow-data; nothing here is staged. ---- */
+  #live { scroll-margin-top: 16px; }
+  .lv { display: grid; gap: 22px; min-width: 0; }
+  .lv-k { display: block; font: 600 var(--fs-caption)/16px var(--font-text); letter-spacing: .14em;
+          text-transform: uppercase; color: var(--muted); }
+  .lv-off { margin: 0; color: var(--muted); font-size: var(--fs-small); line-height: 20px; font-style: italic; }
+  .lv-off:empty { display: none; }
+  /* the live mark: an amber dot with a slow ring (rail + section head) */
+  .lv-pulse { position: relative; display: inline-block; flex: none; width: 12px; height: 12px;
+              border-radius: var(--r-round); background: var(--amber); }
+  .lv-pulse::after { content: ""; position: absolute; inset: -4px; border-radius: var(--r-round);
+                     border: 2px solid var(--amber); opacity: 0; animation: lv-ring 2.2s ease-out infinite; }
+  @keyframes lv-ring { 0% { transform: scale(.6); opacity: .9; } 100% { transform: scale(1.7); opacity: 0; } }
+  .lv-navmark { display: inline-grid; place-items: center; }
+  .lv-headmark { width: 18px; height: 18px; margin: 0 .5em 0 .2em; vertical-align: 7px; }
+
+  /* 1. scoreboard: the ZERO plate + pressed stat cards */
+  .lv-board { display: grid; grid-template-columns: minmax(300px, 5fr) minmax(0, 8fr); gap: 22px; align-items: stretch; }
+  .lv-zero { display: grid; align-content: center; gap: 14px; padding: 28px 30px; border-radius: var(--r-lg);
+             color: var(--cream); background-color: var(--navy); background-image: var(--grain-light);
+             background-size: var(--grain-light-size);
+             box-shadow: inset 1px 1px 0 rgba(247,243,235,.12), inset -1px -1px 0 rgba(0,0,0,.3), var(--pressed); }
+  .lv-zero .lv-k { color: var(--tan); }
+  .lv-zero-num { font: 900 136px/.86 var(--font-display); letter-spacing: -.02em; color: var(--amber); }
+  .lv-zero-label { margin: 0; max-width: 36ch; font: 600 17px/25px var(--font-text); }
+  .lv-zero-src { margin: 0; font-size: var(--fs-small); line-height: 20px; opacity: .78; }
+  .lv-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; }
+  .lv-stat { display: grid; align-content: space-between; gap: 12px; min-height: 124px; padding: 18px 20px;
+             border-radius: var(--r-lg); background-color: var(--panel); background-image: var(--grain);
+             background-size: var(--grain-size); background-position: var(--grain-pos); box-shadow: var(--bevel), var(--pressed); }
+  .lv-stat-v { font: 900 44px/1 var(--font-display); letter-spacing: 0; overflow-wrap: anywhere; }
+  .lv-stat-v small { margin-left: 6px; font: 700 20px/1 var(--font-display); color: var(--muted); }
+  .lv-verdicts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; font: 900 26px/1 var(--font-display); }
+  .lv-verdicts > span { display: inline-flex; align-items: center; gap: 7px; }
+  .badge.lv-mini { min-width: 0; padding: 5px 7px 4px; font-size: 10px; }
+
+  /* 2. live feed + shadow grading */
+  .lv-feedwrap { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; padding: 24px 26px 26px; }
+  .lv-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 10px 24px;
+             padding-bottom: 14px; border-bottom: 1px solid var(--rule); }
+  .lv-head h3 { font-size: 22px; line-height: 1.2; }
+  .lv-tally { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 0; font: 600 var(--fs-caption)/16px var(--font-text);
+              letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+  .lv-tally b { margin-right: 5px; font: 800 18px/1 var(--font-display); letter-spacing: 0; color: var(--ink); }
+  .lv-tally .lv-t-agree b { color: var(--green); }
+  .lv-tally .lv-t-disagree b { color: var(--danger); }
+  .lv-honest { margin: 0; padding: 14px 18px; border-radius: var(--r-sm); background: var(--well);
+               box-shadow: inset 4px 0 0 var(--amber), var(--well-sunk); font-size: 15px; line-height: 22px; }
+  .lv-feed { display: grid; align-content: start; gap: 16px; min-height: 420px; max-height: 1040px; overflow: hidden;
+             padding: 18px; border-radius: var(--r-lg); background-color: var(--tray); background-image: var(--grain);
+             background-size: var(--grain-size); background-position: var(--grain-pos); box-shadow: var(--tray-deep); }
+  .lv-card { display: grid; grid-template-columns: minmax(0, 1fr) minmax(220px, 310px); gap: 14px 22px; padding: 18px 20px;
+             border-radius: var(--r-sm); background: var(--panel); box-shadow: var(--framed); animation: lv-in .45s ease-out both; }
+  @keyframes lv-in { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: none; } }
+  .lv-main { display: grid; gap: 10px; min-width: 0; align-content: start; }
+  .lv-meta { font: 600 11px/16px var(--font-text); letter-spacing: .12em; text-transform: uppercase; color: var(--muted);
+             overflow-wrap: anywhere; }
+  .lv-meta strong { color: var(--ink); }
+  .lv-msg { margin: 0; padding: 12px 14px; border-radius: var(--r-sm); background: #FBF8F1; box-shadow: var(--deboss);
+            white-space: pre-wrap; overflow-wrap: anywhere; }
+  .lv-decision { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+  .lv-conf { font: 800 20px/1 var(--font-display); }
+  .lv-conf small { margin-left: 4px; font: 600 var(--fs-caption)/1 var(--font-text); letter-spacing: .12em;
+                   text-transform: uppercase; color: var(--muted); }
+  .lv-tier { font-size: var(--fs-small); color: var(--muted); overflow-wrap: anywhere; }
+  .lv-esc { display: inline-block; padding: 4px 8px 3px; border-radius: var(--r-sm); background: var(--tan); color: var(--navy);
+            font: 700 11px/1 var(--font-text); letter-spacing: .08em; text-transform: uppercase; }
+  .lv-reason { margin: 0; font-size: 15px; line-height: 22px; }
+  .lv-reason .lv-k { display: inline; margin-right: 6px; }
+  .lv-draft { padding: 12px 14px; border-radius: var(--r-sm); background: var(--sunk); box-shadow: var(--well-sunk);
+              font-size: 15px; line-height: 22px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .lv-draft .lv-k { margin-bottom: 4px; white-space: normal; }
+  .lv-grade { display: grid; align-content: start; gap: 10px; padding: 14px 16px; border-radius: var(--r-sm);
+              border: 1px dashed var(--rule); color: var(--muted); font-size: var(--fs-small); line-height: 20px; }
+  .lv-grade.is-in { border-color: transparent; background: var(--well); box-shadow: var(--deboss); color: var(--ink);
+                    animation: lv-in .35s ease-out both; }
+  .lv-op { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 15px; }
+  .lv-verdict { display: inline-block; padding: 6px 9px 5px; border-radius: var(--r-sm);
+                font: 700 12px/1 var(--font-display); letter-spacing: .1em; text-transform: uppercase; }
+  .lv-agree { background: var(--green); color: var(--cream); box-shadow: inset 0 1px 0 rgba(255,255,255,.2), 1px 1px 0 rgba(16,30,60,.14); }
+  .lv-disagree { color: var(--danger); box-shadow: inset 0 0 0 1.5px var(--danger); }
+  .lv-pending { color: var(--muted); font-style: italic; }
+  .lv-host { font-weight: 600; }
+  .lv-note { margin: 0; padding: 2px 0 2px 12px; border-left: 3px solid var(--amber); }
+  .lv-note .lv-k { margin-bottom: 2px; }
+
+  /* 3. two measured runs + routing */
+  .lv-evals { display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 22px; }
+  .lv-run { display: grid; align-content: start; gap: 18px; }
+  .lv-run-head { display: grid; gap: 4px; padding-bottom: 12px; border-bottom: 1px solid var(--rule); }
+  .lv-run-head h4 { margin: 0; font: 800 20px/1.2 var(--font-display); overflow-wrap: anywhere; }
+  .lv-run-head p { margin: 0; color: var(--muted); font-size: var(--fs-small); line-height: 20px; }
+  .lv-kv { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px 16px; margin: 0; }
+  .lv-kv > div { display: grid; gap: 4px; align-content: start; }
+  .lv-kv dt { font: 600 11px/15px var(--font-text); letter-spacing: .12em; text-transform: uppercase; color: var(--muted); }
+  .lv-kv dd { margin: 0; font: 800 24px/1.1 var(--font-display); }
+  .lv-kv dd small { display: block; margin-top: 3px; font: 600 var(--fs-caption)/16px var(--font-text); color: var(--muted); }
+  .lv-cats { display: grid; gap: 8px; }
+  .lv-catrow { display: grid; grid-template-columns: 92px minmax(0, 1fr) 96px; align-items: center; gap: 12px;
+               font-size: var(--fs-small); }
+  .lv-catrow b { font: 800 15px/1 var(--font-display); text-align: right; }
+  .lv-bar { position: relative; height: 10px; border-radius: var(--r-sm); background: var(--well); box-shadow: var(--deboss); }
+  .lv-bar > i { display: block; height: 100%; border-radius: var(--r-sm); background: var(--amber); }
+  .lv-bar.lv-has-mark::after { content: ""; position: absolute; left: 95%; top: -5px; bottom: -5px; width: 2px;
+                               background: var(--navy); }
+  .lv-cm { width: 100%; border-collapse: collapse; font-size: var(--fs-small); }
+  .lv-cm caption { padding-bottom: 8px; text-align: left; caption-side: top; }
+  .lv-cm th, .lv-cm td { padding: 8px 10px; border-bottom: 1px solid var(--rule); text-align: center; }
+  .lv-cm thead th { border-bottom: 2px solid var(--navy); font: 600 11px/15px var(--font-text); letter-spacing: .1em;
+                    text-transform: uppercase; color: var(--muted); }
+  .lv-cm tbody th { text-align: left; font: 700 13px/18px var(--font-display); letter-spacing: .04em; text-transform: uppercase; }
+  .lv-cm td { font: 800 17px/1 var(--font-display); }
+  .lv-cm td.lv-diag { background: rgba(47,125,91,.08); }
+  .lv-cm td.lv-hot { background: rgba(199,146,75,.16); box-shadow: inset 0 0 0 2px var(--amber); color: var(--navy); }
+  .lv-cm tr:last-child > * { border-bottom: 0; }
+  .lv-routes { display: grid; gap: 22px; }
+  .lv-routes h4, .lv-gates h4 { margin: 0; font: 800 20px/1.2 var(--font-display); }
+  .lv-lane { display: grid; grid-template-columns: 92px minmax(0, 1fr); align-items: center; gap: 10px 16px; }
+  .lv-lane-k { font: 800 15px/1.2 var(--font-display); text-transform: uppercase; letter-spacing: .04em; }
+  .lv-lane-k small { display: block; margin-top: 2px; font: 600 11px/15px var(--font-text); letter-spacing: .08em; color: var(--muted); }
+  .lv-flow { display: flex; align-items: center; min-width: 0; }
+  .lv-box { flex: none; max-width: 210px; padding: 10px 14px; border-radius: var(--r-sm); background: var(--panel);
+            box-shadow: var(--bevel), var(--pressed-row); font: 600 14px/19px var(--font-text); }
+  .lv-box.is-model { background: var(--navy); color: var(--cream);
+                     box-shadow: inset 1px 1px 0 rgba(247,243,235,.16), var(--pressed-row); }
+  .lv-box.is-gate { background: var(--well); box-shadow: inset 0 0 0 1.5px var(--amber), var(--pressed-row); }
+  .lv-box.is-wonder { background: var(--amber); color: var(--navy); }
+  .lv-arrow { position: relative; flex: 1 0 40px; align-self: stretch; display: flex; align-items: center; justify-content: center;
+              min-width: 40px; padding: 0 12px 0 4px;
+              background: linear-gradient(var(--ink), var(--ink)) left center / calc(100% - 8px) 2px no-repeat; }
+  .lv-arrow::after { content: ""; position: absolute; right: 0; top: 50%; margin-top: -6px;
+                     border-left: 9px solid var(--ink); border-top: 6px solid transparent; border-bottom: 6px solid transparent; }
+  .lv-arrow > span { padding: 3px 7px; border-radius: var(--r-sm); background: var(--panel); box-shadow: inset 0 0 0 1px var(--rule);
+                     font: 700 11px/1.2 var(--font-text); letter-spacing: .04em; white-space: nowrap; }
+  .lv-arrow.is-esc > span { background: var(--amber); color: var(--navy); box-shadow: none; }
+  .lv-split { display: grid; gap: 10px; flex: 2 1 auto; min-width: 0; }
+  .lv-branch { display: flex; align-items: center; min-height: 42px; }
+
+  /* 4. autonomy gates */
+  .lv-gates { display: grid; gap: 18px; }
+  .lv-rule { margin: 0; padding: 16px 20px; border-radius: var(--r-sm); color: var(--cream); background-color: var(--navy);
+             background-image: var(--grain-light); background-size: var(--grain-light-size);
+             font: 600 17px/25px var(--font-text); box-shadow: inset 1px 1px 0 rgba(247,243,235,.12), var(--pressed-row); }
+  .lv-wins { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+  .lv-win { display: grid; gap: 10px; padding: 16px 18px; border-radius: var(--r-sm); background: var(--panel);
+            box-shadow: var(--bevel), var(--pressed-row); }
+  .lv-win-v { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 16px; font-size: var(--fs-small); color: var(--muted); }
+  .lv-win-v b { font: 900 34px/1 var(--font-display); color: var(--ink); }
+  .lv-gates > p { margin: 0; }
+  .lv-hold { margin: 0; padding: 12px 16px; border-radius: var(--r-sm); background: var(--well);
+             box-shadow: inset 4px 0 0 var(--amber), var(--well-sunk); font-weight: 700; }
+  .lv-hold:empty { display: none; }
+  .lv-table { width: 100%; border-collapse: collapse; }
+  .lv-table th, .lv-table td { padding: 11px 12px; border-bottom: 1px solid var(--rule); text-align: right; }
+  .lv-table thead th { border-bottom: 2px solid var(--navy); font: 600 11px/16px var(--font-text); letter-spacing: .12em;
+                       text-transform: uppercase; color: var(--muted); }
+  .lv-table th:first-child, .lv-table td:first-child { text-align: left; }
+  .lv-table td { font: 800 17px/1 var(--font-display); }
+  .lv-table tr:last-child > * { border-bottom: 0; }
+  .lv-ng { margin: 0; font-weight: 600; }
+  .lv-ng b { font: 900 22px/1 var(--font-display); }
+
+  @media (max-width: 1279px) {
+    /* too narrow for a lane on one line: the lanes run top to bottom */
+    .lv-lane { grid-template-columns: minmax(0, 1fr); }
+    .lv-flow, .lv-branch { flex-direction: column; align-items: stretch; }
+    .lv-box { max-width: none; }
+    .lv-arrow { flex: none; min-height: 36px; padding: 4px 0 12px;
+                background: linear-gradient(var(--ink), var(--ink)) center top / 2px calc(100% - 8px) no-repeat; }
+    .lv-arrow::after { right: auto; left: 50%; top: auto; bottom: 0; margin: 0 0 0 -6px;
+                       border-top: 9px solid var(--ink); border-left: 6px solid transparent; border-right: 6px solid transparent;
+                       border-bottom: 0; }
+  }
+  @media (max-width: 1179px) {
+    .lv-board { grid-template-columns: minmax(0, 1fr); }
+    .lv-card { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (max-width: 1023px) { #live { order: 3; } }
+  @media (max-width: 719px) {
+    .lv-zero { padding: 22px 20px; }
+    .lv-zero-num { font-size: 104px; }
+    .lv-feedwrap { padding: 18px 14px; }
+    .lv-feed { padding: 12px; }
+    .lv-card { padding: 14px; }
+    .lv-evals { grid-template-columns: minmax(0, 1fr); }
+    .lv-kv { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .lv-pulse::after { animation: none; opacity: .5; transform: scale(1.3); }
+    .lv-card, .lv-grade.is-in { animation: none; }
+  }
 </style></head>
 <body>
 <div class="shell">
@@ -436,6 +629,7 @@
       <div class="wordmark" role="img" aria-label="ComfiAutopilot"><span class="wm" aria-hidden="true">Comf<span class="wm-i">ı<span class="tittle"></span></span>Autop<span class="wm-i">ı<span class="tittle"></span></span>lot<span class="dot"></span></span></div>
       <nav aria-label="Page sections">
         <ul class="railnav">
+          <li><a href="#live"><span class="nav-s lv-navmark" aria-hidden="true"><span class="lv-pulse"></span></span>Live</a></li>
           <li><a href="#triage" aria-current="true"><span class="nav-s ic ic-triage" aria-hidden="true"></span>Triage</a></li>
           <li><a href="#plays"><span class="nav-s ic ic-plays" aria-hidden="true"></span>Plays</a></li>
           <li><a href="#cameras"><span class="nav-s ic ic-cameras" aria-hidden="true"></span>Cameras</a></li>
@@ -463,6 +657,90 @@
          AI) to Muse Spark/Wonder; Jev's original tool, the hand-labeled dataset,
          and the Oct 7–14 pilot are pre-existing.</p>
     </header>
+
+    <section id="live" class="lv" aria-labelledby="h-live">
+      <div class="sec-head"><h2 class="display sec-title" id="h-live"><span class="lv-pulse lv-headmark" aria-hidden="true"></span>Live operation</h2><p class="sec-deck">Real decisions, graded in shadow</p></div>
+      <!-- Every number in this section is computed by GET /shadow-data from the live shadow
+           ledger and the two measured eval runs. Nothing here is staged or typed in. -->
+      <div class="lv-board">
+        <div class="lv-zero">
+          <span class="lv-k">Both measured eval runs</span>
+          <span class="lv-zero-num" id="lv-zero">—</span>
+          <p class="lv-zero-label">Dangerous false actions — truth Confirm, predicted Act — across both measured eval runs (202 decisions)</p>
+          <p class="lv-zero-src" id="lv-zero-src"></p>
+        </div>
+        <div class="lv-stats">
+          <div class="lv-stat"><span class="lv-k">Decisions in the live shadow ledger</span><span class="lv-stat-v" id="lv-n">—</span></div>
+          <div class="lv-stat"><span class="lv-k">Shadow agreement (operator-labeled)</span><span class="lv-stat-v" id="lv-agree">—</span></div>
+          <div class="lv-stat"><span class="lv-k">Verdict counts</span><span class="lv-verdicts" id="lv-verdicts">—</span></div>
+          <div class="lv-stat"><span class="lv-k">Escalations to Muse Wonder</span><span class="lv-stat-v" id="lv-esc">—</span></div>
+          <div class="lv-stat"><span class="lv-k">Model spend, live shadow</span><span class="lv-stat-v" id="lv-cost">—</span></div>
+        </div>
+      </div>
+      <p class="lv-off" id="lv-board-off"></p>
+
+      <div class="panel lv-feedwrap">
+        <div class="lv-head">
+          <h3 class="display">Live feed + shadow grading</h3>
+          <p class="lv-tally" id="lv-tally"></p>
+        </div>
+        <p class="lv-honest">Replay of the live shadow ledger. Real decisions on real guest messages. Nothing was sent — the engine is graded against what the host actually did.</p>
+        <div class="lv-feed" id="lv-feed" aria-label="Replayed shadow decisions, newest first"></div>
+        <p class="lv-off" id="lv-feed-off"></p>
+      </div>
+
+      <div class="lv-head"><h3 class="display">Two measured runs</h3></div>
+      <div class="lv-evals" id="lv-evals"></div>
+      <p class="lv-off" id="lv-evals-off"></p>
+      <div class="panel lv-routes">
+        <h4>Routing</h4>
+        <div class="lv-lane">
+          <div class="lv-lane-k">Lane A<small>final-107-fixed3</small></div>
+          <div class="lv-flow">
+            <div class="lv-box">Guest message</div>
+            <div class="lv-arrow"></div>
+            <div class="lv-box is-model">Muse Spark (Meta Model API)</div>
+            <div class="lv-arrow"></div>
+            <div class="lv-box is-gate">Confidence gate</div>
+            <div class="lv-split">
+              <div class="lv-branch"><div class="lv-arrow"><span>≥ <span class="lv-thr">0.75</span> accept</span></div><div class="lv-box">First-pass call stands</div></div>
+              <div class="lv-branch"><div class="lv-arrow is-esc"><span>&lt; <span class="lv-thr">0.75</span> · <span id="lv-esc-a">—</span> escalated</span></div><div class="lv-box is-wonder">Muse Wonder (escalation)</div></div>
+            </div>
+          </div>
+        </div>
+        <div class="lv-lane">
+          <div class="lv-lane-k">Lane B<small>final-107-open3</small></div>
+          <div class="lv-flow">
+            <div class="lv-box">Guest message</div>
+            <div class="lv-arrow"></div>
+            <div class="lv-box is-model">Muse Spark Open (Baseten, open weights)</div>
+            <div class="lv-arrow"></div>
+            <div class="lv-box is-gate">Same confidence gate</div>
+            <div class="lv-split">
+              <div class="lv-branch"><div class="lv-arrow"><span>≥ <span class="lv-thr">0.75</span> accept</span></div><div class="lv-box">First-pass call stands</div></div>
+              <div class="lv-branch"><div class="lv-arrow is-esc"><span>&lt; <span class="lv-thr">0.75</span> · <span id="lv-esc-b">—</span> escalated</span></div><div class="lv-box is-wonder">Muse Wonder (escalation)</div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel lv-gates">
+        <div class="lv-head"><h3 class="display">Autonomy gates</h3></div>
+        <p class="lv-rule">A category earns send rights only at ~95% agreement across two consecutive 20-message windows. Money and safety topics never graduate — a human always decides those.</p>
+        <div class="lv-wins">
+          <div class="lv-win"><span class="lv-k">Window 1 (20 labeled)</span><div class="lv-win-v" id="lv-w1">—</div><div class="lv-bar lv-has-mark"><i id="lv-w1-bar" style="width:0"></i></div></div>
+          <div class="lv-win"><span class="lv-k">Window 2</span><div class="lv-win-v" id="lv-w2">—</div><div class="lv-bar lv-has-mark"><i id="lv-w2-bar" style="width:0"></i></div></div>
+        </div>
+        <p class="fine">Bars show agreement; the navy line marks the 95% bar.</p>
+        <p class="lv-hold" id="lv-hold"></p>
+        <table class="lv-table">
+          <thead><tr><th scope="col">Category</th><th scope="col">Engine calls graded</th><th scope="col">Operator agreed</th><th scope="col">Agreement</th></tr></thead>
+          <tbody id="lv-cat-body"></tbody>
+        </table>
+        <p class="lv-ng">Money / safety flags in the live ledger so far: <b id="lv-ng">—</b></p>
+        <p class="lv-off" id="lv-gates-off"></p>
+      </div>
+    </section>
 
     <section id="triage" class="triage" aria-labelledby="h-triage">
       <div class="sec-head"><h2 class="display sec-title" id="h-triage"><span class="sec-s ic ic-triage" aria-hidden="true"></span>Triage</h2></div>
@@ -1174,6 +1452,243 @@
         if (r.top > innerHeight * 0.8 || r.bottom < 0)
           t.scrollIntoView({ block: 'start', behavior: reduceMotion ? 'auto' : 'smooth' });
       }).observe(t, { childList: true }));
+    })();
+  </script>
+  <script>
+    // ---- live operation: reads GET /shadow-data only; nothing above is touched --
+    // Replays the live shadow ledger one card at a time, then reveals how the
+    // operator labeled it and what the host did. If the endpoint fails, the
+    // panels say so quietly and the rest of the page is unaffected.
+    (() => {
+      const $ = id => document.getElementById(id);
+      const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g,
+        c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+      const CARD_MS = 2200, REVEAL_MS = 900, POLL_MS = 30000, KEEP = 6;
+      const CATS = ['Act', 'Confirm', 'Ignore'];          // gates table order
+      const EVAL_ORDER = ['Confirm', 'Act', 'Ignore'];    // eval cards + confusion matrix order
+      const TONE = { Act: 't-act', Confirm: 't-confirm', Ignore: 't-ignore' };
+      const OFF = 'Ledger unavailable.';
+      const num = v => (typeof v === 'number' && isFinite(v)) ? v : null;
+      const pct = v => num(v) == null ? '—' : (Math.round(v * 10) / 10) + '%';       // already a percent
+      const pctOf = v => num(v) == null ? '—' : (Math.round(v * 1000) / 10) + '%';   // a 0-1 fraction
+      const money = v => num(v) == null ? '—' : '$' + v.toFixed(2);
+      const clip = (s, n) => { s = String(s || ''); return s.length > n ? s.slice(0, n - 1).trimEnd() + '…' : s; };
+      const fmtMin = m => m < 10 ? Math.round(m * 10) / 10 : Math.round(m);
+      const fmtTime = iso => {
+        const d = new Date(iso);
+        if (isNaN(d)) return '';
+        try {
+          return d.toLocaleString('en-US', { timeZone: 'America/Chicago', month: 'short', day: 'numeric',
+                                             hour: 'numeric', minute: '2-digit' }) + ' CT';
+        } catch (e) { return d.toISOString().slice(0, 16).replace('T', ' ') + ' UTC'; }
+      };
+      const rowKey = r => r.row_id || [r.decided_at, r.reservation_code, r.message_at].join('|');
+
+      // -- 1. scoreboard ---------------------------------------------------
+      function renderBoard(d) {
+        const t = d && d.ledger_ok && d.totals ? d.totals : null;
+        $('lv-n').textContent = t ? t.rows : '—';
+        $('lv-agree').innerHTML = t ? esc(t.labeled_agree + '/' + t.labeled) +
+          '<small>(' + esc(pct(t.labeled_agree_pct)) + ')</small>' : '—';
+        $('lv-verdicts').innerHTML = t ? CATS.map(c => '<span><span class="badge lv-mini ' + TONE[c] + '">' +
+          c + '</span>' + esc(t.by_category[c]) + '</span>').join('') : '—';
+        $('lv-esc').textContent = t ? t.escalations : '—';
+        $('lv-cost').textContent = t ? money(t.cost_usd) : '—';
+        $('lv-board-off').textContent = t ? '' : OFF;
+        const z = d ? num(d.zero_dangerous) : null;
+        $('lv-zero').textContent = z == null ? '—' : z;
+        $('lv-zero-src').textContent = z == null ? 'Eval runs unavailable.'
+          : 'From the confusion matrices below, Confirm row × Act column: ' +
+            d.evals.map(e => e.name + ' ' + e.confirm_to_act).join(' · ') + '.';
+      }
+
+      // -- 2. live feed + shadow grading -----------------------------------
+      const feed = $('lv-feed');
+      const queue = [], seen = new Map();
+      let cursor = 0, pass = 1, paused = false, timer = null;
+      let tally = { shown: 0, agree: 0, disagree: 0, pending: 0 };
+
+      function renderTally() {
+        $('lv-tally').innerHTML = !queue.length ? '' :
+          '<span><b>' + tally.shown + '</b>of ' + queue.length + ' shown</span>' +
+          '<span class="lv-t-agree"><b>' + tally.agree + '</b>agreed</span>' +
+          '<span class="lv-t-disagree"><b>' + tally.disagree + '</b>disagreed</span>' +
+          '<span><b>' + tally.pending + '</b>label pending</span>' +
+          '<span>' + (paused ? 'Paused' : 'Replay pass ' + pass) + '</span>';
+      }
+
+      function cardHtml(r) {
+        const cat = r.engine_category || '', tier = String(r.tier || ''), conf = num(r.confidence);
+        const meta = [r.platform, r.reservation_code, fmtTime(r.message_at)].filter(Boolean);
+        let h = '<div class="lv-main"><div class="lv-meta"><strong>' + esc(r.property || r.listing || '') + '</strong>' +
+          meta.map(m => ' · ' + esc(m)).join('') + '</div>' +
+          '<p class="lv-msg">' + esc(clip(r.message_text, 300)) + '</p>' +
+          '<div class="lv-decision"><span class="badge ' + (TONE[cat] || 't-none') + '">' + esc(cat || '—') + '</span>' +
+          (conf == null ? '' : '<span class="lv-conf">' + Math.round(conf * 100) + '%<small>confidence</small></span>') +
+          '<span class="lv-tier">' + esc(tier.replace(/\s*->\s*/g, ' → ')) + '</span>' +
+          (tier.includes('->') ? '<span class="lv-esc">escalated to Muse Wonder</span>' : '') + '</div>';
+        if (r.reason) h += '<p class="lv-reason"><span class="lv-k">Why</span>' + esc(r.reason) + '</p>';
+        if ((cat === 'Act' || cat === 'Confirm') && r.draft)
+          h += '<div class="lv-draft"><span class="lv-k">Draft · not sent</span>' + esc(r.draft) + '</div>';
+        return h + '</div><div class="lv-grade"><span class="lv-k">Shadow grading</span>' +
+          '<span>Checking against what the host did…</span></div>';
+      }
+
+      function gradeHtml(r) {
+        let h = '<span class="lv-k">Shadow grading</span>';
+        if (r.gus_category) {
+          const ok = r.gus_category === r.engine_category;
+          h += '<div class="lv-op">Operator: <strong>' + esc(r.gus_category) + '</strong>' +
+            (ok ? '<span class="lv-verdict lv-agree">Agree</span>' : '<span class="lv-verdict lv-disagree">Disagree</span>') + '</div>';
+        } else {
+          h += '<div class="lv-op lv-pending">Operator label pending</div>';
+        }
+        const host = [], lat = num(r.host_reply_latency_min);
+        if (r.host_outcome === 'host_replied') host.push(lat == null ? 'Host replied' : 'Host replied in ' + fmtMin(lat) + ' min');
+        else if (r.host_outcome === 'no_reply_24h') host.push('No host reply in 24h');
+        if (r.answered_by_human === true) host.push('Answered by the host');
+        if (host.length) h += '<div class="lv-host">' + esc(host.join(' · ')) + '</div>';
+        if (r.gus_category && r.gus_note)
+          h += '<blockquote class="lv-note"><span class="lv-k">Operator note</span>' + esc(clip(r.gus_note, 260)) + '</blockquote>';
+        return h;
+      }
+
+      function reveal(card, r) {
+        const g = card.querySelector('.lv-grade');
+        g.innerHTML = gradeHtml(r);
+        g.classList.add('is-in');
+        tally.shown += 1;
+        if (!r.gus_category) tally.pending += 1;
+        else if (r.gus_category === r.engine_category) tally.agree += 1;
+        else tally.disagree += 1;
+        renderTally();
+      }
+
+      function tick() {
+        if (paused || !queue.length) return;
+        if (cursor >= queue.length) {   // replay exhausted: loop back to the oldest decision
+          cursor = 0; pass += 1;
+          tally = { shown: 0, agree: 0, disagree: 0, pending: 0 };
+        }
+        const r = queue[cursor++];
+        const card = document.createElement('article');
+        card.className = 'lv-card';
+        card.innerHTML = cardHtml(r);
+        feed.prepend(card);
+        while (feed.children.length > KEEP) feed.lastElementChild.remove();
+        renderTally();
+        setTimeout(() => reveal(card, r), REVEAL_MS);
+      }
+
+      // New ledger rows join the end of the queue; a row already queued is
+      // updated in place, so a label that landed since shows on its next reveal.
+      function mergeRows(rows) {
+        rows.forEach(r => {
+          const k = rowKey(r), have = seen.get(k);
+          if (have) Object.assign(have, r);
+          else { seen.set(k, r); queue.push(r); }
+        });
+      }
+
+      // Hovering the feed with a mouse holds the replay so a card can be read.
+      const setPaused = v => { if (paused !== v) { paused = v; renderTally(); } };
+      feed.addEventListener('pointerenter', e => { if (e.pointerType === 'mouse') setPaused(true); });
+      feed.addEventListener('pointerleave', e => { if (e.pointerType === 'mouse') setPaused(false); });
+
+      // -- 3. two measured runs --------------------------------------------
+      const kv = (k, v, sub) => '<div><dt>' + k + '</dt><dd>' + esc(v) +
+        (sub ? '<small>' + esc(sub) + '</small>' : '') + '</dd></div>';
+
+      function runCard(e) {
+        const s = e.stats || {}, bc = s.by_category || {}, cm = s.confusion || {};
+        const cats = EVAL_ORDER.map(c => {
+          const b = bc[c] || {}, a = num(b.accuracy);
+          return '<div class="lv-catrow"><span>' + c + '</span><div class="lv-bar"><i style="width:' +
+            (a == null ? 0 : Math.round(a * 100)) + '%"></i></div><b>' + pctOf(a) +
+            (b.n != null ? ' <small>n=' + esc(b.n) + '</small>' : '') + '</b></div>';
+        }).join('');
+        const matrix = EVAL_ORDER.map(t => '<tr><th scope="row">' + t + '</th>' + EVAL_ORDER.map(p => {
+          const v = (cm[t] || {})[p];
+          const cls = t === 'Confirm' && p === 'Act' ? ' class="lv-hot" title="truth Confirm, predicted Act"'
+                    : t === p ? ' class="lv-diag"' : '';
+          return '<td' + cls + '>' + (v == null ? '—' : esc(v)) + '</td>';
+        }).join('') + '</tr>').join('');
+        return '<article class="panel lv-run">' +
+          '<div class="lv-run-head"><span class="lv-k">Lane ' + esc(e.lane) + ' · policy ' + esc(e.policy) + '</span>' +
+          '<h4>' + esc(e.name) + '</h4><p>' + esc(e.first_pass) + ' first pass, ' + esc(e.escalation) + ' escalation</p></div>' +
+          '<dl class="lv-kv">' +
+            kv('Overall accuracy', pctOf(s.accuracy)) +
+            kv('Decisive accuracy', pctOf(s.decisive_accuracy), s.decisive_n != null ? 'n = ' + s.decisive_n : '') +
+            kv('High-conf accuracy', pctOf(s.high_conf_accuracy), s.high_conf_n != null ? 'n = ' + s.high_conf_n : '') +
+            kv('Records scored', s.n != null ? s.n : '—') +
+            kv('Total cost', money(s.total_cost_usd)) +
+            kv('Escalations', e.escalations != null ? e.escalations : '—') +
+          '</dl>' +
+          '<div class="lv-cats"><span class="lv-k">Per-category accuracy</span>' + cats + '</div>' +
+          '<table class="lv-cm"><caption class="lv-k">Confusion matrix · rows = truth, columns = prediction</caption>' +
+          '<thead><tr><th scope="col">Truth</th>' + EVAL_ORDER.map(c => '<th scope="col">' + c + '</th>').join('') +
+          '</tr></thead><tbody>' + matrix + '</tbody></table></article>';
+      }
+
+      function renderEvals(d) {
+        const evals = d && Array.isArray(d.evals) ? d.evals : [];
+        $('lv-evals').innerHTML = evals.map(runCard).join('');
+        const missing = d ? (d.errors || []).filter(m => !m.startsWith('shadow ledger')) : [];
+        $('lv-evals-off').textContent = !d ? 'Eval runs unavailable.' : missing.join(' · ');
+        const byLane = {};
+        evals.forEach(e => { byLane[e.lane] = e; });
+        $('lv-esc-a').textContent = byLane.A && byLane.A.escalations != null ? byLane.A.escalations : '—';
+        $('lv-esc-b').textContent = byLane.B && byLane.B.escalations != null ? byLane.B.escalations : '—';
+        if (d && num(d.escalation_threshold) != null)
+          document.querySelectorAll('.lv-thr').forEach(n => { n.textContent = d.escalation_threshold; });
+      }
+
+      // -- 4. autonomy gates -----------------------------------------------
+      function renderGates(d) {
+        const ok = !!(d && d.ledger_ok && d.windows && d.by_category && d.totals);
+        const w1 = ok ? d.windows.window_1 : null, w2 = ok ? d.windows.window_2 : null;
+        $('lv-w1').innerHTML = !w1 ? '—' :
+          '<span>n <b>' + esc(w1.n) + '</b>' + (w1.partial ? ' of ' + esc(w1.size) + ' (partial)' : '') + '</span>' +
+          '<span>agreement <b>' + esc(pct(w1.pct)) + '</b></span>';
+        $('lv-w2').innerHTML = !w2 ? '—' :
+          (w2.n <= w2.size ? '<span><b>' + esc(w2.n) + '</b> of ' + esc(w2.size) + '</span>'
+                           : '<span>n <b>' + esc(w2.n) + '</b></span>') +
+          '<span>agreement <b>' + esc(pct(w2.pct)) + '</b></span>';
+        $('lv-w1-bar').style.width = (w1 && num(w1.pct) != null ? w1.pct : 0) + '%';
+        $('lv-w2-bar').style.width = (w2 && num(w2.pct) != null ? w2.pct : 0) + '%';
+        const cleared = ok && w1.n >= w1.size && w2.n >= w2.size && w1.pct >= 95 && w2.pct >= 95;
+        $('lv-hold').textContent = !ok ? '' : cleared
+          ? 'Both windows are at or above the 95% bar.'
+          : 'Below the 95% bar — still in shadow. Every category is held at P1 approve-first.';
+        $('lv-cat-body').innerHTML = !ok ? '' : CATS.map(c => {
+          const b = d.by_category[c] || {};
+          return '<tr><td><span class="badge lv-mini ' + TONE[c] + '">' + c + '</span></td><td>' + esc(b.called) +
+            '</td><td>' + esc(b.agreed) + '</td><td>' + esc(pct(b.pct)) + '</td></tr>';
+        }).join('');
+        $('lv-ng').textContent = ok ? d.totals.never_graduate : '—';
+        $('lv-gates-off').textContent = ok ? '' : OFF;
+      }
+
+      // -- load + poll -----------------------------------------------------
+      let hadLedger = false;
+      async function load() {
+        let d = null;
+        try {
+          const r = await fetch('/shadow-data', { cache: 'no-store' });
+          if (r.ok) d = await r.json();
+        } catch (e) { d = null; }
+        if (d && d.ledger_ok) hadLedger = true;
+        // A failed poll after a good load keeps what is already on screen.
+        if (!(d && d.ledger_ok) && hadLedger) { if (d) renderEvals(d); return; }
+        renderBoard(d); renderEvals(d); renderGates(d);
+        if (d && Array.isArray(d.rows)) mergeRows(d.rows);
+        $('lv-feed-off').textContent = queue.length ? ''
+          : d && d.ledger_ok ? 'No decisions in the ledger yet.' : OFF;
+        renderTally();
+        if (!timer && queue.length) { setTimeout(tick, 300); timer = setInterval(tick, CARD_MS); }
+      }
+      load();
+      setInterval(load, POLL_MS);
     })();
   </script>
 </body>
