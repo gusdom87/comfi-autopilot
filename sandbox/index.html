@@ -684,7 +684,7 @@
           <h3 class="display">Live feed + shadow grading</h3>
           <p class="lv-tally" id="lv-tally"></p>
         </div>
-        <p class="lv-honest">Replay of the live shadow ledger. Real decisions on real guest messages. Nothing was sent — the engine is graded against what the host actually did.</p>
+        <p class="lv-honest">Replay of the live shadow ledger. Real decisions on real guest messages. Nothing was sent — the engine is graded against what the host actually did. Property and place names are anonymized for display, and reservation codes are hidden.</p>
         <div class="lv-feed" id="lv-feed" aria-label="Replayed shadow decisions, newest first"></div>
         <p class="lv-off" id="lv-feed-off"></p>
       </div>
@@ -737,7 +737,7 @@
           <thead><tr><th scope="col">Category</th><th scope="col">Engine calls graded</th><th scope="col">Operator agreed</th><th scope="col">Agreement</th></tr></thead>
           <tbody id="lv-cat-body"></tbody>
         </table>
-        <p class="lv-ng">Money / safety flags in the live ledger so far: <b id="lv-ng">—</b></p>
+        <p class="lv-ng">Money or safety messages acted on without a human: <b id="lv-ng">—</b></p>
         <p class="lv-off" id="lv-gates-off"></p>
       </div>
     </section>
@@ -1482,7 +1482,7 @@
                                              hour: 'numeric', minute: '2-digit' }) + ' CT';
         } catch (e) { return d.toISOString().slice(0, 16).replace('T', ' ') + ' UTC'; }
       };
-      const rowKey = r => r.row_id || [r.decided_at, r.reservation_code, r.message_at].join('|');
+      const rowKey = r => r.row_id || [r.decided_at, r.property, r.message_at].join('|');
 
       // -- 1. scoreboard ---------------------------------------------------
       function renderBoard(d) {
@@ -1519,7 +1519,7 @@
 
       function cardHtml(r) {
         const cat = r.engine_category || '', tier = String(r.tier || ''), conf = num(r.confidence);
-        const meta = [r.platform, r.reservation_code, fmtTime(r.message_at)].filter(Boolean);
+        const meta = [r.platform, fmtTime(r.message_at)].filter(Boolean);
         let h = '<div class="lv-main"><div class="lv-meta"><strong>' + esc(r.property || r.listing || '') + '</strong>' +
           meta.map(m => ' · ' + esc(m)).join('') + '</div>' +
           '<p class="lv-msg">' + esc(clip(r.message_text, 300)) + '</p>' +
@@ -1665,7 +1665,7 @@
           return '<tr><td><span class="badge lv-mini ' + TONE[c] + '">' + c + '</span></td><td>' + esc(b.called) +
             '</td><td>' + esc(b.agreed) + '</td><td>' + esc(pct(b.pct)) + '</td></tr>';
         }).join('');
-        $('lv-ng').textContent = ok ? d.totals.never_graduate : '—';
+        $('lv-ng').textContent = ok ? d.totals.money_safety_acted_alone : '—';
         $('lv-gates-off').textContent = ok ? '' : OFF;
       }
 

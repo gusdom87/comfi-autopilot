@@ -6,6 +6,7 @@ All model calls happen server-side; the API key never reaches the
 browser. Play runs live in memory, on the staged fixture world; every
 play effect is simulated or held for approval - nothing real is sent.
 Run: JEV_SANDBOX_PORT=8791 python3 sandbox/server.py"""
+import hashlib
 import json
 import os
 import re
@@ -233,8 +234,10 @@ def handle_get_run(run_id: str, runs=None) -> dict:
 # GET /shadow-data: the live shadow ledger (real engine decisions on
 # real guest messages, graded against what the host did; nothing was
 # sent) and the two measured eval runs. Computed fresh per request from
-# the files, read-only. A missing or unreadable source becomes an entry
-# in `errors`; the endpoint never fails.
+# the files, read-only, with property names, towns and reservation codes
+# anonymized for display (see the display anonymizer below). A missing
+# or unreadable source becomes an entry in `errors`; the endpoint never
+# fails.
 SHADOW_LEDGER_DEFAULT = "/home/hatch/workspace/hackathon/shadow-live/ledger.jsonl"
 EVAL_RUNS_DIR = os.path.join(HERE, "..", "eval", "runs")
 EVAL_RUNS = (
@@ -250,10 +253,10 @@ WINDOW = 20
 STATS_KEYS = ("accuracy", "decisive_accuracy", "decisive_n", "n",
               "total_cost_usd", "high_conf_accuracy", "high_conf_n",
               "by_category", "confusion")
-# The page's fields only. The ledger's guest, property/reservation ids
-# and repo stamps are never sent to the browser.
+# The page's fields only. The ledger's guest, property/reservation ids,
+# reservation codes and repo stamps are never sent to the browser.
 ROW_FIELDS = ("row_id", "decided_at", "message_at", "property", "listing",
-              "platform", "reservation_code", "message_text",
+              "platform", "message_text",
               "engine_category", "confidence", "tier", "route", "reason",
               "draft", "cost_usd", "answered_by_human", "host_outcome",
               "host_reply_latency_min", "verdict", "verdict_basis",
@@ -286,15 +289,114 @@ def signoff_names(text: str) -> list:
     return [] if any(w.lower() in _NOT_NAMES for w in words) else words
 
 
-def scrub_row(row: dict) -> dict:
+# -- display anonymizer ------------------------------------------------
+# The feed is filmed for a public video, so real client property names,
+# their towns and reservation codes never reach the page. Display layer
+# only: the ledger on disk is read, never changed. Names follow the
+# project's privacy renames (the Cedar Hollow units, Ridgeview, Maple
+# Street House); the rest are invented in the same register. Keys are a
+# SHA-256 digest of the Hospitable property id (or of a lowercased town
+# word), so this file holds no real id and no real name. An id missing
+# from the map shows as "Private listing".
+PRIVATE_LISTING = "Private listing"
+DISPLAY_NAMES = {
+    # the four Cedar Hollow units and the Retreat
+    "9fe0c1e591c0": "Garden Unit 1A",
+    "20697ff16e83": "Garden Unit 1B",
+    "41b0d4acb832": "Studio 2A",
+    "61e407c0e7f5": "Upper Unit 2B",
+    "228c8f491d3c": "Cedar Hollow Retreat",
+    # client condos
+    "4471f311c55f": "Ridgeview Condo",
+    "854b8fda5abd": "Parkside Condo",
+    # client houses (one house has two listing records, one name)
+    "ef78e5cab88b": "Maple Street House",
+    "fd32156908a4": "Maple Street House",
+    "73bec54301dc": "Hillcrest House",
+    "feee0fbb5449": "Brookside House",
+    "0723734e6b75": "Willow Lane House",
+    "fe640456e83a": "Briarwood House",
+    "530ed157216a": "Linden House",
+}
+# Towns the listings sit in, as a guest might type them.
+PLACE_NAMES = {
+    "3e7a475906d0": "Cedar Hollow",
+    "64ed1bc1f966": "Ridgeview",
+    "fb4a9aa73dae": "[area]",
+    "8ed938e65018": "[area]",
+    "736189d6b69b": "[area]",
+}
+CODE_MASK = "[code]"
+# Airbnb (HM + 8), Vrbo (HA-...) and Hospitable's own (VRBO-/HOST-...) codes.
+CODE_SHAPE = re.compile(r"\b(?:HM[A-Z0-9]{8}|(?:HA|HOST|VRBO)-[A-Z0-9]{6,})\b")
+
+
+def digest(value) -> str:
+    return hashlib.sha256(str(value).encode()).hexdigest()[:12]
+
+
+def display_name(property_id) -> str:
+    return DISPLAY_NAMES.get(digest(property_id or ""), PRIVATE_LISTING)
+
+
+def _name_pattern(name: str):
+    """A real name as a guest or note might type it: apostrophe straight,
+    curly or left out, parentheses optional, space and hyphen alike."""
+    parts = []
+    for ch in name:
+        if ch in "'’":
+            parts.append("['’]?")
+        elif ch in "()":
+            parts.append(re.escape(ch) + "?")
+        elif ch in " -":
+            parts.append(r"[\s-]*")
+        else:
+            parts.append(re.escape(ch))
+    return re.compile(r"(?<!\w)%s(?!\w)" % "".join(parts), re.IGNORECASE)
+
+
+def build_anonymizer(rows: list):
+    """A text scrub built from the ledger's own property names and
+    reservation codes, so no list of real names lives in this file."""
+    shown_for, codes = {}, set()
+    for r in rows:
+        shown = display_name(r.get("property_id"))
+        for k in ("property", "listing"):
+            full = str(r.get(k) or "").strip()
+            for name in (full, full.split("|")[0].strip()):
+                if len(name) >= 4:
+                    shown_for.setdefault(name, shown)
+        if str(r.get("reservation_code") or "").strip():
+            codes.add(str(r["reservation_code"]).strip())
+    names = [(_name_pattern(n), s)
+             for n, s in sorted(shown_for.items(), key=lambda kv: -len(kv[0]))]
+    code_re = re.compile("|".join(map(re.escape, sorted(codes, key=len, reverse=True)))
+                         ) if codes else None
+
+    def anonymize(text: str) -> str:
+        for pattern, shown in names:
+            text = pattern.sub(shown, text)
+        if code_re:
+            text = code_re.sub(CODE_MASK, text)
+        text = CODE_SHAPE.sub(CODE_MASK, text)
+        return re.sub(r"[A-Za-z]+",
+                      lambda m: PLACE_NAMES.get(digest(m.group().lower()), m.group()),
+                      text)
+    return anonymize
+
+
+def scrub_row(row: dict, anonymize=None) -> dict:
     out = {k: row.get(k) for k in ROW_FIELDS if k in row}
     names = signoff_names(out.get("message_text", ""))
-    if names:
-        name_re = re.compile(r"\b(?:%s)\b" % "|".join(map(re.escape, names)),
-                             re.IGNORECASE)
-        for k in _SCRUBBED_TEXT:
-            if isinstance(out.get(k), str):
+    name_re = re.compile(r"\b(?:%s)\b" % "|".join(map(re.escape, names)),
+                         re.IGNORECASE) if names else None
+    anonymize = anonymize or build_anonymizer([row])
+    for k in _SCRUBBED_TEXT:
+        if isinstance(out.get(k), str):
+            if name_re:
                 out[k] = name_re.sub("[name]", out[k])
+            out[k] = anonymize(out[k])
+    out["property"] = out["listing"] = display_name(row.get("property_id"))
     return out
 
 
@@ -372,6 +474,10 @@ def _ledger_summary(rows: list) -> dict:
         "escalations": sum("->" in str(r.get("tier") or "") for r in rows),
         "cost_usd": round(sum(_num(r.get("cost_usd")) for r in rows), 6),
         "never_graduate": sum(bool(r.get("never_graduate")) for r in rows),
+        # Zero by construction: the shadow runner has no send path
+        # (shadow_live.py, "NEVER-SEND DESIGN"), so no row was acted on,
+        # money and safety rows included.
+        "money_safety_acted_alone": 0,
     }
     w1 = _window(labeled[:WINDOW])
     w1["partial"] = w1["n"] < WINDOW
@@ -413,7 +519,9 @@ def handle_shadow_data(ledger_path: str = "", runs_dir: str = "") -> dict:
     ledger_ok = rows or not any(e.startswith(("shadow ledger: not found",
                                               "shadow ledger: unreadable"))
                                 for e in errors[n_errors:])
-    out = {"ledger_ok": bool(ledger_ok), "rows": [scrub_row(r) for r in rows],
+    anonymize = build_anonymizer(rows)
+    out = {"ledger_ok": bool(ledger_ok),
+           "rows": [scrub_row(r, anonymize) for r in rows],
            **_ledger_summary(rows)}
     evals = [e for e in (_read_eval(s, runs_dir or EVAL_RUNS_DIR, errors)
                          for s in EVAL_RUNS) if e is not None]

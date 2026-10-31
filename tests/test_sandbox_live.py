@@ -1,6 +1,8 @@
-import importlib.util, json, os, sys, threading, urllib.request
+import importlib.util, json, os, re, sys, threading, urllib.request
 from datetime import datetime, timedelta, timezone
 from http.server import ThreadingHTTPServer
+
+import pytest
 
 ROOT = os.path.join(os.path.dirname(__file__), "..")
 sys.path.insert(0, os.path.join(ROOT, "src"))
@@ -114,6 +116,7 @@ def test_shadow_totals_windows_and_categories(tmp_path):
     assert t["escalations"] == 2
     assert t["cost_usd"] == 0.26
     assert t["never_graduate"] == 1
+    assert t["money_safety_acted_alone"] == 0       # flagged, never acted on
     w1, w2 = d["windows"]["window_1"], d["windows"]["window_2"]
     assert (w1["n"], w1["agree"], w1["pct"], w1["partial"]) == (20, 17, 85.0, False)
     assert (w2["n"], w2["agree"], w2["pct"], w2["size"]) == (3, 2, 66.7, 20)
@@ -175,7 +178,8 @@ def test_guest_names_and_ids_never_leave_the_server(tmp_path):
     d = srv.handle_shadow_data(ledger_path=write_ledger(tmp_path / "l.jsonl", fixture_rows()),
                                runs_dir=fixture_runs(tmp_path))
     for r in d["rows"]:
-        assert not {"guest", "property_id", "reservation_id", "repo_commit"} & set(r)
+        assert not {"guest", "property_id", "reservation_id", "reservation_code",
+                    "repo_commit"} & set(r)
     last = d["rows"][-1]
     assert last["message_text"] == "Hi there,\nCan we check in at 3?\nThanks\n[name]"
     assert last["draft"] == "Hi [name], let me check with the cleaner."
@@ -218,11 +222,111 @@ def test_http_shadow_data_and_page_section(tmp_path, monkeypatch):
         "Dangerous false actions — truth Confirm, predicted Act — across both "
         "measured eval runs (202 decisions)",
         "Replay of the live shadow ledger. Real decisions on real guest messages. "
-        "Nothing was sent — the engine is graded against what the host actually did.",
+        "Nothing was sent — the engine is graded against what the host actually did. "
+        "Property and place names are anonymized for display, and reservation codes "
+        "are hidden.",
         "A category earns send rights only at ~95% agreement across two consecutive "
         "20-message windows. Money and safety topics never graduate — a human always "
         "decides those.",
         "Below the 95% bar — still in shadow. Every category is held at P1 approve-first.",
-        "Money / safety flags in the live ledger so far:",
+        "Money or safety messages acted on without a human: <b id=\"lv-ng\">",
+        "d.totals.money_safety_acted_alone",
         "fetch('/shadow-data'"):
         assert text in html
+    # The old line read as if money messages never reached the ledger.
+    assert "Money / safety flags" not in html
+    # The card never asks for a reservation code.
+    assert "reservation_code" not in html
+
+
+# -- display anonymizer ------------------------------------------------
+# Real names never appear in this file: the fixture uses stand-ins, and
+# the live check reads the real names out of the live ledger itself.
+CODE_SHAPED = re.compile(r"\bHM[A-Z0-9]{8}\b|\b(?:HA|HOST|VRBO)-[A-Z0-9]{5,}\b")
+
+
+def assert_no_leak(payload, real_names, codes):
+    blob = json.dumps(payload, ensure_ascii=False)
+    low = blob.lower()
+    for name in real_names:
+        for base in {name, name.split("|")[0].strip()}:
+            for v in {base, re.sub(r"\s*[()]\s*", " ", base).strip(), base.replace("'", ""),
+                      base.replace("’", "'"), base.replace("'", "’")}:
+                assert v.lower() not in low, f"real property name in payload: {v!r}"
+    for code in codes:
+        assert code not in blob, "real reservation code in payload"
+    assert not CODE_SHAPED.search(blob), "reservation-code-shaped token in payload"
+    towns = [w for w in re.findall(r"[A-Za-z]+", blob)
+             if srv.digest(w.lower()) in srv.PLACE_NAMES]
+    assert not towns, "real town name in payload"
+    for r in payload["rows"]:
+        assert "reservation_code" not in r
+        assert r["property"] == r["listing"]
+        assert r["property"] in set(srv.DISPLAY_NAMES.values()) | {srv.PRIVATE_LISTING}
+
+
+def test_display_anonymizer_renames_and_masks(tmp_path, monkeypatch):
+    monkeypatch.setitem(srv.DISPLAY_NAMES, srv.digest("pid-mapped"), "Test Display House")
+    monkeypatch.setitem(srv.PLACE_NAMES, srv.digest("fixtureville"), "Testburg")
+    rows = fixture_rows()
+    for r in rows[:10]:
+        r.update(property_id="pid-mapped", property="Fixture’s House (1N)",
+                 listing="Fixture's House (1N) | Sleeps 4")
+    rows[0]["message_text"] = "Booked Fixture's House 1N, code HMFIX00003, ETA into Fixtureville at 3"
+    rows[1]["gus_note"] = "fixture’s house (1n) again; see VRBO-ABC123 and HMZZZZ9999"
+    rows[11]["draft"] = "Welcome to the Fixture Condo!"
+    path = tmp_path / "l.jsonl"
+    write_ledger(path, rows)
+    before = path.read_bytes()
+    d = srv.handle_shadow_data(ledger_path=str(path), runs_dir=fixture_runs(tmp_path))
+    assert path.read_bytes() == before                # display layer only
+    by_id = {r["row_id"]: r for r in d["rows"]}
+    assert by_id["r00"]["property"] == by_id["r00"]["listing"] == "Test Display House"
+    assert by_id["r10"]["property"] == "Private listing"   # "pid" is not in the map
+    assert by_id["r00"]["message_text"] == \
+        "Booked Test Display House, code [code], ETA into Testburg at 3"
+    assert by_id["r01"]["gus_note"] == "Test Display House again; see [code] and [code]"
+    assert by_id["r11"]["draft"] == "Welcome to the Private listing!"
+    assert by_id["r26"]["message_text"].endswith("Thanks\n[name]")   # sign-off scrub still runs
+    assert_no_leak(d, {"Fixture's House (1N) | Sleeps 4", "Fixture Condo", "Fixtureville"},
+                   {r["reservation_code"] for r in rows})
+    assert srv.display_name(None) == srv.display_name("") == "Private listing"
+
+
+def test_display_map_holds_no_raw_property_ids():
+    # Keys are 12-hex digests, values are display names only.
+    src = open(os.path.join(ROOT, "sandbox", "server.py"), encoding="utf-8").read()
+    assert not re.search(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", src)
+    for key in list(srv.DISPLAY_NAMES) + list(srv.PLACE_NAMES):
+        assert re.fullmatch(r"[0-9a-f]{12}", key)
+
+
+LIVE_LEDGER = os.environ.get("JEV_SHADOW_LEDGER") or srv.SHADOW_LEDGER_DEFAULT
+
+
+@pytest.mark.skipif(not os.path.exists(LIVE_LEDGER),
+                    reason="live shadow ledger not on this machine")
+def test_live_shadow_data_shows_no_real_property_names_or_codes(monkeypatch):
+    # The payload the filmed page reads, served over HTTP from the real ledger.
+    raw = []
+    with open(LIVE_LEDGER, encoding="utf-8") as fh:
+        for ln in fh:
+            try:
+                raw.append(json.loads(ln))
+            except ValueError:
+                pass
+    raw = [r for r in raw if isinstance(r, dict)]
+    names = {str(r.get(k) or "").strip() for r in raw for k in ("property", "listing")} - {""}
+    codes = {str(r.get("reservation_code") or "").strip() for r in raw} - {""}
+    assert names and codes, "live ledger rows carry no property names or codes to check"
+    monkeypatch.setenv("JEV_SHADOW_LEDGER", LIVE_LEDGER)
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), srv.Handler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    try:
+        url = f"http://127.0.0.1:{httpd.server_address[1]}/shadow-data"
+        with urllib.request.urlopen(url) as resp:
+            d = json.load(resp)
+    finally:
+        httpd.shutdown()
+    assert d["ledger_ok"] is True and d["rows"]
+    assert_no_leak(d, names, codes)
