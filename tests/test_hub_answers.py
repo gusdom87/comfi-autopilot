@@ -260,6 +260,37 @@ def test_the_full_bin_clause_is_narrow():
         assert p.verdict == "hold", (msg, p.text)
 
 
+def test_the_host_name_after_the_opening_greeting_is_part_of_the_greeting():
+    """The guest's real message opened "Hi Gus," and the engine held it on
+    'gus', a leftover word. The name right after the greeting that opens the
+    message now reads as part of that greeting; anywhere else it is still a
+    leftover word, and everything else in the message decides as before."""
+    real = "Hi Gus, " + F.FULL_BIN_QUESTION
+    p = _ask(real)
+    assert (p.verdict, p.text) == ("answer", "Hi! " + F.OUTDOOR_BIN_STATEMENT), (p.reason, p.detail)
+    assert _ask(real, F.NO_OUTDOOR_BIN_MARKDOWN).reason == "missing"
+    auto = F.OUTDOOR_BIN_MARKDOWN.replace(f"- [edited] {F.OUTDOOR_BIN_STATEMENT}", f"- [auto] {F.OUTDOOR_BIN_STATEMENT}")
+    assert _ask(real, auto).reason == "missing"
+    for msg in ("Hi Gus! Where does the trash go?", "Hey Gus, where does the trash go?",
+                "Hello Gus where does the trash go?", "Hi, Gus! Where does the trash go?"):
+        q = _ask(msg)
+        assert (q.verdict, q.text) == ("answer", "Hi! " + F.OUTDOOR_BIN_STATEMENT), (msg, q.reason, q.detail)
+    for msg in ("Gus, where does the trash go?", "Where does the trash go Gus?",
+                "Where does the trash go? Thanks Gus!", "Where does the trash go? Hi Gus!",
+                "Hi Gustavo, where does the trash go?", "Hi Gusto, where does the trash go?",
+                "Hi Gus's friend, where does the trash go?", "Hi gus gus where does the trash go?",
+                "Hi Gus, can you take the trash out?", "Hi Gus, the kitchen trash is full",
+                "Hi Gus, where does the trash go? The toilet is leaking", "Hi Gus, what's the door code?",
+                "Hi Gus, where do we park?", "Hi Gus \U0001F6A8 where does the trash go?"):
+        q = _ask(msg)
+        assert q.verdict == "hold", (msg, q.text)
+    # every other message reads the same after "Hi Gus, " as after "Hi, " (padded: the length cap)
+    for msg in ("Where does the trash go? The power went out.", "Is there a coffee maker?",
+                "Can we check out late?", "Where is the laundry room?", "Where does the trash go?"):
+        a, b = _plan("Hi Gus, " + msg, F.CEDAR_1A), _plan("Hi,     " + msg, F.CEDAR_1A)
+        assert (a.verdict, a.reason, a.text) == (b.verdict, b.reason, b.text), msg
+
+
 def test_engines_make_no_model_call():
     """No import of any model client from the answer engines or ratings."""
     for name in ("hub_answers.py", "geo_answers.py", "answer_text.py", "ratings.py"):

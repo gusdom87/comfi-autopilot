@@ -34,7 +34,9 @@ a coffee maker?") from the property's own Knowledge Hub, word for word.
              full, is there an outside garbage bin...", a real guest
              question, Oct 31, 2026). It only ever leads to a trash
              question, and "outside" in the question needs an outdoor place
-             in the answer.
+             in the answer. The host's name right after the greeting that
+             opens the message ("Hi Gus, ...", the same real message) is
+             read as part of that greeting.
   answer     "Hi! " + the source statement(s), verbatim. The statement must
              satisfy the intent's own requirement (a trash statement names
              a place; a coffee maker statement says there is one) and name
@@ -207,6 +209,12 @@ TRASH_FULL_CONDITION = re.compile(
     r"(?:(?:kitchen|indoor|inside|bathroom)\s+(?:trash|garbage|rubbish)(?:\s+(?:bins?|cans?|bags?|baskets?))?"
     r"|(?:trash|garbage|rubbish)(?:\s+(?:bins?|cans?|bags?|baskets?))?\s+(?:in|inside)\s+the\s+(?:kitchen|bathroom))"
     r"\s+(?:(?:is|are|gets|get)\s+(?:full|filled(?:\s+up)?)|fills?\s+up)(?![a-z'])")
+# How guests open a message to the host: a greeting and his first name
+# ("Hi Gus, if the garbage bin...", the same real message). The repo has
+# no operator-name setting, so the name is written here. Only this
+# opening counts: the name is blanked, and the greeting left behind is
+# read like any other. "Gus" anywhere else is still a leftover word.
+HOST_GREETING = re.compile(r"^(\W*(?:hi+|hey+|hello+)[\s,]+)gus(?![a-z'])")
 # "outside" asked for: the answer must name an outdoor place.
 _OUTDOOR_ASKED = re.compile(r"\b(?:outside|outdoors?|exterior)\b")
 _OUTDOOR_PLACE = re.compile(
@@ -577,7 +585,11 @@ def classify(message):
             if m:
                 return None, (), ("barred", f"{name}: {m.group(0)!r}")
     # The barred checks above read the whole message; everything below
-    # reads it with the one closed full-indoor-bin clause blanked out.
+    # reads it with the host's name after the opening greeting and the one
+    # closed full-indoor-bin clause blanked out.
+    host = HOST_GREETING.match(text)
+    if host:
+        text = host.group(1) + " " * (host.end() - host.end(1)) + text[host.end():]
     cond = TRASH_FULL_CONDITION.search(text)
     if cond:
         text = text[:cond.start()] + " " * (cond.end() - cond.start()) + text[cond.end():]
