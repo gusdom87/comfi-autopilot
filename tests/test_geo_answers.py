@@ -1,0 +1,250 @@
+"""Tests for mapping answers (geo_answers.py, geo_fixtures.py). Synthetic
+coordinates and invented places; the OSM client runs against a fake HTTP
+layer. Nothing touches the network."""
+import json
+import os
+import sys
+import tempfile
+import urllib.parse
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
+
+from jev import geo_answers as G
+from jev import geo_fixtures as GF
+from jev.hub_answers import sha256
+
+OK = {"status": "accepted"}
+SCOPE = ("cedar-1a", "cedar-1b", "cedar-2a", "cedar-2b")
+
+
+def _plan(msg, provider=None, **kw):
+    kw.setdefault("reservation", OK)
+    kw.setdefault("scope", SCOPE)
+    return G.plan(msg, "cedar-1a", GF.ORIGIN, provider or GF.FixtureProvider(), **kw)
+
+
+def test_rounding_is_honest_and_approximate():
+    mi = G.MILE_M
+    assert G.fmt_miles(0.43 * mi) == "0.4 miles"
+    assert G.fmt_miles(1.18 * mi) == "1 mile"
+    assert G.fmt_miles(1.43 * mi) == "1.5 miles"
+    assert G.fmt_miles(3.23 * mi) == "3 miles"
+    assert G.fmt_miles(22.06 * mi) == "22 miles"
+    assert G.fmt_miles(42.3 * mi) == "40 miles"
+    assert G.fmt_minutes(0.4) == "1 minute"
+    assert G.fmt_minutes(9) == "9 minutes"
+    assert G.fmt_minutes(14) == "15 minutes"
+    assert G.fmt_minutes(58) == "1 hour"
+    assert G.fmt_minutes(72) == "1 hour 10 minutes"
+    assert G.fmt_minutes(170) == "2 hours 50 minutes"
+
+
+def test_the_two_templates():
+    assert G.render("Oak Street Coffee", G.Route(1300.0, 180.0)) == \
+        "Hi! Oak Street Coffee is about 0.8 miles away, roughly 3 minutes by car."
+    assert G.render("Rosa's Taqueria", G.Route(350.0, 60.0)) == "Hi! Rosa's Taqueria is a short walk, about 4 minutes."
+
+
+def test_named_places_answer_with_their_fixture_route():
+    for msg, pid in (("How far is Grand Harbor Pier?", "p-pier"), ("how far is Sakura Garden?", "p-sakura"),
+                     ("How long to drive to Prairie Amphitheater?", "p-amph"),
+                     ("Is Hollow Ridge Zoo far from here?", "p-zoo"), ("How close is Starlight Cinema?", "p-cinema")):
+        p = _plan(msg)
+        assert p.verdict == "answer" and p.place["osm_id"] == pid, (msg, p)
+        assert p.text == G.render(GF.PLACES[pid].name, GF.ROUTES[pid])
+
+
+def test_nearest_of_type_is_the_shortest_drive():
+    p = _plan("Where's the nearest pharmacy?")
+    assert p.place["osm_id"] == "p-pharm" and p.text.startswith("Hi! The nearest pharmacy, Cedar Pharmacy, is about")
+    assert _plan("Is there a Japanese restaurant nearby?").place["osm_id"] == "p-sakura"   # cuisine filtered
+    assert _plan("Where is the closest train station?").place["osm_id"] == "p-station"
+    assert _plan("how far is the train station?").place["osm_id"] == "p-station"           # "the <type>" is a type
+    assert _plan("Any pizza places nearby?").place["osm_id"] == "p-pizza"
+
+
+def test_ambiguity_holds():
+    assert _plan("How far is Lakeview Park?").reason == "ambiguous"        # within 15%
+    assert _plan("How far is Lincoln Square?").reason == "ambiguous"       # better-known one farther away
+    p = _plan("How far is Riverside Park?")                                # far apart, same prominence
+    assert p.verdict == "answer" and p.place["osm_id"] == "p-riverside-a"
+
+
+def test_an_exact_name_beats_a_decoy_that_contains_it():
+    p = _plan("How far is Grand Harbor Pier?")
+    assert p.place["osm_id"] == "p-pier"  # not "Grand Harbor Pier Dental", 3 km away
+
+
+def test_one_place_returned_twice_is_one_place():
+    places = dict(GF.PLACES)
+    dup = GF.PLACES["p-sakura"]
+    places["p-sakura-way"] = G.Place(dup.name, dup.lat + 0.0003, dup.lon, dup.kinds, dup.importance, dup.cuisine,
+                                     "p-sakura-way")
+    routes = dict(GF.ROUTES, **{"p-sakura-way": GF.ROUTES["p-sakura"]})
+    p = _plan("How far is Sakura Garden?", GF.FixtureProvider(places, routes))
+    assert p.verdict == "answer"
+
+
+def test_far_unknown_and_lookup_failures_hold():
+    assert _plan("How far is Summit Peak Resort?").verdict == "hold"
+    assert _plan("How far is Moonbase Alpha?").reason == "not_found"
+    assert _plan("How far is Sakura Garden?", GF.FixtureProvider(fail_routes={"p-sakura"})).reason == "no_route"
+
+    class Down(GF.FixtureProvider):
+        def search(self, *a, **k):
+            raise G.ProviderError("timeout")
+    assert _plan("How far is Sakura Garden?", Down()).reason == "lookup_failed"
+    bad = dict(GF.ROUTES, **{"p-sakura": G.Route(900000.0, 60.0)})  # absurd route: suspect data
+    assert _plan("How far is Sakura Garden?", GF.FixtureProvider(routes=bad)).reason == "no_route"
+
+
+def test_barred_types_and_personal_destinations_hold():
+    for msg in ("How far is Cedar General Hospital?", "Where's the nearest urgent care?",
+                "Where is the closest gas station?", "How far is the police station?",
+                "How far is my friend's house?", "How far is 1427 Maple Ridge Dr?", "How far is Elm Street?",
+                "how far is downtown?", "How far is the airport?"):
+        p = _plan(msg)
+        assert p.verdict == "hold", (msg, p)
+    p = _plan("How far is Jordan Lake?", forbidden_tokens=("Jordan", "Avery"))
+    assert p.verdict == "hold" and "guest's name" in p.detail
+
+
+def test_whole_message_rules_hold():
+    for msg in ("How far is Sakura Garden? Also it smells like gas", "How far is Sakura Garden? \U0001F6A8",
+                "Can you tell me how far Sakura Garden is?", "How far is Sakura Garden? We leave tomorrow.",
+                "How far is Sakura Garden and is there a cleaning fee?", "Could we check out late? How far is the zoo?",
+                "How far is Sakura Garden and Starlight Cinema?"):
+        assert _plan(msg).verdict == "hold", msg
+    assert _plan("Hi! How far is Sakura Garden? Thanks!").verdict == "answer"
+
+
+def test_scope_and_reservation_status():
+    assert _plan("How far is Sakura Garden?", reservation={"status": "inquiry"}).reason == "reservation"
+    assert _plan("How far is Sakura Garden?", reservation={"status": "accepted",
+                                                           "reservation_status": {"current": {"category": "request"}}}
+                 ).reason == "reservation"
+    assert G.plan("How far is Sakura Garden?", "cedar-retreat", GF.ORIGIN, GF.FixtureProvider(), reservation=OK,
+                  scope=SCOPE).reason == "scope"
+    assert G.plan("How far is Sakura Garden?", "cedar-1a", None, GF.FixtureProvider(), reservation=OK,
+                  scope=SCOPE).reason == "no_origin"
+
+
+def test_only_the_destination_phrase_leaves():
+    prov = GF.FixtureProvider()
+    msg = "Hi there! How far is Sakura Garden? Thanks so much!"
+    p = _plan(msg, prov, forbidden_tokens=("Jordan",))
+    assert p.verdict == "answer"
+    searches = [s for s in prov.sent if s[0] == "search"]
+    assert searches == [("search", "sakura garden", GF.ORIGIN, G.NAMED_RADIUS_KM)]
+    assert p.sent and all("there" not in str(s).lower() and "thanks" not in str(s).lower() for s in p.sent)
+
+
+def test_operator_pinned_override_is_used_only_while_its_hash_matches():
+    body = {"place": "Sakura Garden", "distance_m": 9000.0, "duration_s": 900.0}
+    ov = dict(body, confirmed_sha256=sha256(json.dumps(body, sort_keys=True)), note="checked on Google Maps")
+    key = G.override_key("cedar-1a", "sakura garden")
+    prov = GF.FixtureProvider()
+    p = _plan("How far is Sakura Garden?", prov, overrides={key: ov})
+    assert p.override and p.text == "Hi! Sakura Garden is about 5.5 miles away, roughly 15 minutes by car."
+    assert prov.sent == []  # a pinned answer makes no lookup
+    tampered = dict(ov, distance_m=100.0)
+    assert _plan("How far is Sakura Garden?", overrides={key: tampered}).reason == "override_tampered"
+
+
+# ---------- the OSM client against a fake HTTP layer ----------
+
+class FakeHTTP:
+    def __init__(self):
+        self.urls = []
+
+    def __call__(self, url):
+        self.urls.append(url)
+        if "/search?" in url:
+            return [{"name": "Sakura Garden", "lat": "41.0123", "lon": "-86.9187", "category": "amenity",
+                     "type": "restaurant", "importance": 0.1, "extratags": {"cuisine": "japanese;sushi"},
+                     "osm_type": "node", "osm_id": 1}]
+        return {"code": "Ok", "routes": [{"distance": 8900.0, "duration": 840.0}]}
+
+
+class Clock:
+    def __init__(self):
+        self.t, self.slept = 1000.0, []
+
+    def __call__(self):
+        return self.t
+
+    def sleep(self, s):
+        self.slept.append(s)
+        self.t += s
+
+
+def _osm(tmp, http=None, clock=None):
+    clock = clock or Clock()
+    return G.OSMProvider(os.path.join(tmp, "geo-cache.json"), http_get=http or FakeHTTP(), clock=clock,
+                         sleep=clock.sleep), clock
+
+
+def test_osm_client_rate_limit_cache_and_coarse_coordinates():
+    with tempfile.TemporaryDirectory() as tmp:
+        http = FakeHTTP()
+        prov, clock = _osm(tmp, http)
+        origin = (41.012345, -87.006789)
+        places = prov.search("sakura garden", origin, 80.0)
+        route = prov.route(origin, places[0])
+        assert places[0].name == "Sakura Garden" and places[0].cuisine == ("japanese", "sushi")
+        assert route == G.Route(8900.0, 840.0)
+        assert clock.slept and all(s <= 1.0 for s in clock.slept) and abs(sum(clock.slept) - 1.0) < 1e-9
+        q = urllib.parse.parse_qs(urllib.parse.urlparse(http.urls[0]).query)
+        assert q["q"] == ["sakura garden"] and q["bounded"] == ["1"]
+        assert all(len(v.split(".")[1]) == 1 for v in q["viewbox"][0].split(","))  # 0.1 degree box
+        assert "-87.007,41.012;" in http.urls[1]                                   # origin to 3 decimals
+        assert "41.012345" not in "".join(http.urls)
+        # cached: the same lookups make no second request
+        prov2, _ = _osm(tmp, http)
+        prov2.search("sakura garden", origin, 80.0)
+        prov2.route(origin, places[0])
+        assert len(http.urls) == 2
+        doc = json.load(open(os.path.join(tmp, "geo-cache.json")))
+        assert doc["schema"] == "comfi-autopilot/geo-cache/v1" and len(doc["entries"]) == 2
+        assert oct(os.stat(os.path.join(tmp, "geo-cache.json")).st_mode & 0o777) == "0o600"
+
+
+def test_osm_client_errors_become_provider_errors_and_bad_routes_none():
+    with tempfile.TemporaryDirectory() as tmp:
+        def boom(url):
+            raise OSError("proxy reset")
+        prov, _ = _osm(tmp, boom)
+        try:
+            prov.search("x", (41.0, -87.0), 10)
+            raise AssertionError("no error")
+        except G.ProviderError as e:
+            assert "proxy reset" in str(e)
+        prov2, _ = _osm(tmp, lambda url: {"code": "NoRoute"})
+        assert prov2.route((41.0, -87.0), G.Place("x", 41.1, -87.1)) is None
+
+
+def test_cache_write_rides_out_eperm():
+    with tempfile.TemporaryDirectory() as tmp:
+        path = os.path.join(tmp, "c.json")
+        real, calls, waits = os.replace, [], []
+
+        def flaky(a, b):
+            calls.append(1)
+            if len(calls) < 3:
+                raise PermissionError(1, "Operation not permitted")
+            return real(a, b)
+        os.replace = flaky
+        try:
+            G.write_json_atomic(path, {"ok": 1}, sleep=waits.append)
+        finally:
+            os.replace = real
+        assert json.load(open(path)) == {"ok": 1} and waits == [5, 10]
+        assert [f for f in os.listdir(tmp) if f.startswith(".tmp-")] == []
+
+
+def test_the_end_to_end_plan_runs_on_the_osm_client():
+    with tempfile.TemporaryDirectory() as tmp:
+        prov, _ = _osm(tmp)
+        p = G.plan("How far is Sakura Garden?", "cedar-1a", (41.0, -87.0), prov, reservation=OK, scope=SCOPE)
+        assert p.verdict == "answer" and p.text == "Hi! Sakura Garden is about 5.5 miles away, roughly 15 minutes by car."
+        assert [s[0] for s in p.sent] == ["search", "route"] and p.sent[0][1] == "sakura garden"
