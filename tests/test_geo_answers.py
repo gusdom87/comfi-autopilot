@@ -126,6 +126,57 @@ def test_barred_types_and_personal_destinations_hold():
     assert p.verdict == "hold" and "guest's name" in p.detail
 
 
+ADDRESS_NAMES = ("45 Archer Ave", "12 Main St", "Unit 2 Apt 3", "45th St", "200 W Elm Street", "7 Oak Lane",
+                 "Suite #4", "5 Points Plaza", "88 N Halsted St.")
+NORMAL_NAMES = ("Sakura Garden", "Oak Street Coffee", "Main Street Cafe", "Archer Avenue Diner", "7-Eleven",
+                "Route 66 Diner", "Studio 54", "Five Guys", "Joe's Place", "Lane Bryant", "Rosa's Taqueria",
+                "2 Sisters Cafe", "24 Hour Fitness")
+
+
+def _with(name, km=1.0, route_km=1.3, kinds=("amenity:restaurant",), cuisine=("pizza",), pid="p-addr"):
+    """The fixture map plus one place called `name`, nearer than every pizza place."""
+    lat, lon = GF._offset(GF.ORIGIN, km, 45)
+    places = dict(GF.PLACES, **{pid: G.Place(name, lat, lon, kinds, 0.1, cuisine, pid)})
+    routes = dict(GF.ROUTES, **{pid: G.Route(route_km * 1000.0, 180.0)})
+    return GF.FixtureProvider(places, routes)
+
+
+def test_address_shaped_place_names_are_recognized_and_normal_names_are_not():
+    for name in ADDRESS_NAMES:
+        assert G.address_like(name), name
+        assert not G._name_ok(name), name
+    for name in NORMAL_NAMES + tuple(p.name for p in GF.PLACES.values()):
+        assert G.address_like(name) is None, name
+        assert G._name_ok(name), name
+    # the template's own words after a number never read as an address
+    for route in (G.Route(350.0, 60.0), G.Route(1300.0, 180.0), G.Route(9000.0, 900.0), G.Route(98000.0, 4320.0)):
+        for pinned in (False, True):
+            for label in ("Sakura Garden", "The nearest pizza place, Cedar Slice Pizza,"):
+                assert G.address_like(G.render(label, route, pinned=pinned)) is None
+
+
+def test_an_address_shaped_nearest_place_holds_and_never_renders():
+    for name in ("45 Archer Ave", "12 Main St", "Unit 2 Apt 3"):
+        p = _plan("Any pizza places nearby?", _with(name))
+        assert p.verdict == "hold" and p.reason == "place_name", (name, p)
+        assert p.text is None and name not in str(p.as_log()["text"])
+    # an address-shaped row that is NOT the nearest does not block the answer
+    p = _plan("Any pizza places nearby?", _with("45 Archer Ave", km=6.0, route_km=7.0))
+    assert p.verdict == "answer" and p.place["osm_id"] == "p-pizza" and "Archer" not in p.text
+    # a normal name in the same spot answers as before
+    p = _plan("Any pizza places nearby?", _with("Archer Avenue Diner"))
+    assert p.verdict == "answer" and p.text.startswith("Hi! The nearest pizza place, Archer Avenue Diner, is about")
+
+
+def test_an_address_shaped_named_match_or_pinned_place_holds():
+    p = _plan("How far is Archer?", _with("45 Archer Ave", km=3.0, route_km=3.5, cuisine=()))
+    assert p.verdict == "hold" and p.reason == "place_name", p
+    body = {"place": "12 Main St", "distance_m": 9000.0, "duration_s": 900.0}
+    ov = dict(body, confirmed_sha256=sha256(json.dumps(body, sort_keys=True)))
+    p = _plan("How far is Sakura Garden?", overrides={G.override_key("cedar-1a", "sakura garden"): ov})
+    assert p.verdict == "hold" and p.reason == "place_name" and p.text is None
+
+
 def test_whole_message_rules_hold():
     for msg in ("How far is Sakura Garden? Also it smells like gas", "How far is Sakura Garden? \U0001F6A8",
                 "Can you tell me how far Sakura Garden is?", "How far is Sakura Garden? We leave tomorrow.",

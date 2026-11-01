@@ -36,7 +36,8 @@ from map data, never written by a model.
              Google Maps for a guest-relevant day and time) keeps the plain
              "roughly <Y> minutes by car." Under 0.3 miles: "Hi! <Place> is
              a short walk, about <Y> minutes." The listing's address never
-             appears.
+             appears, and neither does a place name shaped like a street
+             address ("45 Archer Ave", "Unit 2"): such a place holds.
 
 Every failure is a HOLD: no answer goes, the message follows the
 actuator's existing fallback path. Recall is the cost, never a wrong
@@ -166,6 +167,35 @@ mother dad father parents family cousin sister brother aunt uncle grandma grandp
 _VAGUE = frozenset("downtown town city center centre area airport station stop beach lake mall store shop".split())
 _STREET = re.compile(r"\b(?:street|st|avenue|ave|road|rd|boulevard|blvd|lane|ln|drive|dr|court|ct|way|highway|hwy"
                      r"|route|rte|parkway|pkwy|terrace|ter|circle|cir|place|pl|plaza|suite|ste|zip|address)\b")
+# A place NAME shaped like a street address (audit G1, Nov 1, 2026): OSM
+# sometimes names an unnamed point by its address ("45 Archer Ave"). Read on
+# the folded name and on a rendered answer; the template's own words after
+# a number (miles, minutes, hour, by car, away) are none of these. A
+# business name with a street word and no number ("Oak Street Coffee") is
+# not an address.
+ADDRESS_RES = (
+    # a house number, up to three words, a street suffix: "45 archer ave", "12 main st", "45th st"
+    re.compile(r"\b\d+(?:st|nd|rd|th)?\s+(?:[a-z][a-z'.\-]*\s+){0,3}(?:street|st|avenue|ave|road|rd|boulevard"
+               r"|blvd|lane|ln|drive|dr|court|ct|way|highway|hwy|parkway|pkwy|terrace|ter|circle|cir|place|pl"
+               r"|plaza)\b"),
+    # a unit number: "unit 2", "apt 3", "suite #4", "ste 5"
+    re.compile(r"\b(?:unit|apartment|apt|suite|ste)\s*#?\s*\d"),
+)
+
+
+def address_like(text):
+    """The first address-shaped stretch of `text` (folded), or None. A name
+    that opens with a number and carries any street word counts too."""
+    t = T.fold(str(text or ""))
+    for rx in ADDRESS_RES:
+        m = rx.search(t)
+        if m:
+            return m.group(0)
+    if re.match(r"\s*#?\d", t) and _STREET.search(t):
+        return t.strip()
+    return None
+
+
 _DEST_CHARS = re.compile(r"^[a-z0-9][a-z0-9' &.\-]*$")
 _STOP = frozenset({"the", "a", "an", "of", "at", "and", "&", "in", "on"})
 
@@ -518,13 +548,18 @@ class OSMProvider:
 
 # ---------- judgment ----------
 
-def _name_ok(name):
+def _name_shape_ok(name):
     n = str(name or "")
     if not n or len(n) > MAX_PLACE_NAME or len(n.split()) > 8:
         return False
     if any(d in n for d in T.DASHES) or re.search(r"https?:|www\.|@|\d{3,}", n, re.I):
         return False
     return bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 '&.,\-]*", n.replace("’", "'")))
+
+
+def _name_ok(name):
+    """A name the template may carry: the shape rules, and not an address."""
+    return _name_shape_ok(name) and address_like(name) is None
 
 
 def _dedupe(cands, origin):
@@ -767,7 +802,10 @@ def _nearest_of_type(spec, origin, provider, common):
         if haversine_m(origin, (c.lat, c.lon)) > spec.radius_km * 1000.0:
             continue
         keep.append(c)
-    keep = [c for c in _dedupe(keep, origin) if _name_ok(c.name)]
+    # A nameless row is dropped as before. An address-shaped name stays in
+    # the race: if it is the nearest, the answer HOLDS (naming the next
+    # place "the nearest" would be wrong, and the address never renders).
+    keep = [c for c in _dedupe(keep, origin) if _name_shape_ok(c.name)]
     if not keep:
         return _hold("not_found", f"no {spec.label} within {spec.radius_km:.0f} km", **common)
     best = None
@@ -781,5 +819,7 @@ def _nearest_of_type(spec, origin, provider, common):
     if best is None:
         return _hold("no_route", f"no usable route to the nearest {spec.label}", **common)
     place, route = best
+    if not _name_ok(place.name):
+        return _hold("place_name", f"the nearest {spec.label}'s name looks like a street address", **common)
     return _answer(f"The nearest {spec.label}, {place.name},", place, route, common,
                    f"nearest of type {spec.id} among {len(keep)}")
