@@ -40,9 +40,26 @@ def test_rounding_is_honest_and_approximate():
 
 
 def test_the_two_templates():
+    # a live lookup's drive time is free-flow (OSRM): it says so
     assert G.render("Oak Street Coffee", G.Route(1300.0, 180.0)) == \
+        "Hi! Oak Street Coffee is about 0.8 miles away, roughly 3 minutes by car without traffic."
+    # an operator-pinned answer (times the operator checked) keeps the plain wording
+    assert G.render("Oak Street Coffee", G.Route(1300.0, 180.0), pinned=True) == \
         "Hi! Oak Street Coffee is about 0.8 miles away, roughly 3 minutes by car."
-    assert G.render("Rosa's Taqueria", G.Route(350.0, 60.0)) == "Hi! Rosa's Taqueria is a short walk, about 4 minutes."
+    # the short walk needs no qualifier either way
+    for pinned in (False, True):
+        assert G.render("Rosa's Taqueria", G.Route(350.0, 60.0), pinned=pinned) == \
+            "Hi! Rosa's Taqueria is a short walk, about 4 minutes."
+
+
+def test_live_lookups_say_without_traffic_and_pinned_answers_do_not():
+    for msg in ("How far is Sakura Garden?", "Where's the nearest pharmacy?", "How far is Grand Harbor Pier?"):
+        p = _plan(msg)
+        assert p.verdict == "answer" and not p.override and p.text.endswith(" by car without traffic."), (msg, p)
+    body = {"place": "Sakura Garden", "distance_m": 9000.0, "duration_s": 900.0}
+    ov = dict(body, confirmed_sha256=sha256(json.dumps(body, sort_keys=True)))
+    p = _plan("How far is Sakura Garden?", overrides={G.override_key("cedar-1a", "sakura garden"): ov})
+    assert p.override and p.text.endswith(" by car.") and "traffic" not in p.text
 
 
 def test_named_places_answer_with_their_fixture_route():
@@ -178,10 +195,10 @@ class Clock:
         self.t += s
 
 
-def _osm(tmp, http=None, clock=None):
+def _osm(tmp, http=None, clock=None, cache="geo-cache.json"):
     clock = clock or Clock()
-    return G.OSMProvider(os.path.join(tmp, "geo-cache.json"), http_get=http or FakeHTTP(), clock=clock,
-                         sleep=clock.sleep), clock
+    return G.OSMProvider(os.path.join(tmp, cache), http_get=http or FakeHTTP(), clock=clock,
+                         sleep=clock.sleep, rate_path=os.path.join(tmp, "osm-rate.json")), clock
 
 
 def test_osm_client_rate_limit_cache_and_coarse_coordinates():
@@ -266,5 +283,116 @@ def test_the_end_to_end_plan_runs_on_the_osm_client():
     with tempfile.TemporaryDirectory() as tmp:
         prov, _ = _osm(tmp)
         p = G.plan("How far is Sakura Garden?", "cedar-1a", (41.0, -87.0), prov, reservation=OK, scope=SCOPE)
-        assert p.verdict == "answer" and p.text == "Hi! Sakura Garden is about 5.5 miles away, roughly 15 minutes by car."
+        assert p.verdict == "answer" and p.text == \
+            "Hi! Sakura Garden is about 5.5 miles away, roughly 15 minutes by car without traffic."
         assert [s[0] for s in p.sent] == ["search", "route"] and p.sent[0][1] == "sakura garden"
+
+
+# ---------- one request per second across instances and processes ----------
+
+def test_two_instances_share_one_limit():
+    """The actuator glue builds a new provider per message: two providers
+    (different caches, so neither is a cache hit) still space their
+    requests one second apart, because they share the machine's gate."""
+    with tempfile.TemporaryDirectory() as tmp:
+        clock = Clock()
+        a, _ = _osm(tmp, clock=clock, cache="cache-a.json")
+        b, _ = _osm(tmp, clock=clock, cache="cache-b.json")
+        a.search("sakura garden", (41.0, -87.0), 80.0)
+        assert clock.slept == []                       # the first request of all waits for nothing
+        b.search("sakura garden", (41.0, -87.0), 80.0)
+        assert clock.slept == [1.0]                    # a second instance waits out the first one's second
+        clock.t += 0.4
+        a.route((41.0, -87.0), G.Place("Sakura Garden", 41.0123, -86.9187))
+        assert abs(clock.slept[-1] - 0.6) < 1e-9       # and the first waits for the second
+        doc = json.load(open(os.path.join(tmp, "osm-rate.json")))
+        assert doc["schema"] == "comfi-autopilot/osm-rate/v1" and doc["last_request_at"] == clock.t
+        assert oct(os.stat(os.path.join(tmp, "osm-rate.json")).st_mode & 0o777) == "0o600"
+
+
+def test_the_default_gate_is_one_per_machine_whatever_the_cache():
+    old = os.environ.pop("JEV_OSM_RATE_FILE", None)
+    try:
+        a = G.OSMProvider("/nonexistent/a/geo-cache.json")
+        b = G.OSMProvider("/nonexistent/b/other-cache.json")
+        assert a.gate.path == b.gate.path == os.path.expanduser(G.DEFAULT_RATE_FILE)
+        os.environ["JEV_OSM_RATE_FILE"] = "/nonexistent/x/rate.json"
+        assert G.OSMProvider("/nonexistent/c.json").gate.path == "/nonexistent/x/rate.json"
+    finally:
+        os.environ.pop("JEV_OSM_RATE_FILE", None)
+        if old is not None:
+            os.environ["JEV_OSM_RATE_FILE"] = old
+
+
+def test_a_clock_behind_the_stamp_or_an_unreadable_stamp_waits_the_full_interval():
+    with tempfile.TemporaryDirectory() as tmp:
+        rate = os.path.join(tmp, "osm-rate.json")
+        G.write_json_atomic(rate, {"schema": G.RATE_SCHEMA, "last_request_at": 5000.0})  # ahead of the clock
+        prov, clock = _osm(tmp)
+        prov.search("sakura garden", (41.0, -87.0), 80.0)
+        assert clock.slept == [1.0]
+        with open(rate, "w") as fh:
+            fh.write("{not json")
+        prov2, clock2 = _osm(tmp, cache="other.json")
+        prov2.search("sakura garden", (41.0, -87.0), 80.0)
+        assert clock2.slept == [1.0]
+
+
+def test_a_gate_that_stays_locked_holds_instead_of_requesting():
+    import fcntl
+    with tempfile.TemporaryDirectory() as tmp:
+        http = FakeHTTP()
+        prov, _ = _osm(tmp, http)
+        prov.gate.lock_timeout = 0.2
+        fd = os.open(os.path.join(tmp, "osm-rate.json.lock"), os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX)              # another process mid-request
+            p = G.plan("How far is Sakura Garden?", "cedar-1a", (41.0, -87.0), prov, reservation=OK, scope=SCOPE)
+        finally:
+            os.close(fd)
+        assert p.verdict == "hold" and p.reason == "lookup_failed" and "rate gate" in p.detail
+        assert http.urls == []                          # nothing went out around the gate
+
+
+_WORKER = r"""
+import json, os, sys, time
+sys.path.insert(0, sys.argv[1])
+from jev import geo_answers as G
+log, rate, cache, tag, interval = sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5], float(sys.argv[6])
+go = float(sys.argv[7])
+
+def http(url):
+    t = time.time()
+    fd = os.open(log, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
+    os.write(fd, (json.dumps([t, tag]) + "\n").encode())
+    os.close(fd)
+    return []
+
+prov = G.OSMProvider(cache, http_get=http, min_interval=interval, rate_path=rate)
+while time.time() < go:
+    time.sleep(0.005)
+for i in range(3):
+    prov.search(f"{tag} place {i}", (41.0, -87.0), 10.0)
+"""
+
+
+def test_two_processes_share_one_limit():
+    """Two OS processes, each with its own provider and cache, started at
+    the same instant: every request (six in all) starts at least one
+    interval after the previous one ended, whichever process made it. The
+    interval is shortened to 0.25 s to keep the suite fast; the mechanism
+    is the one the 1 s default uses."""
+    import subprocess
+    import sys as _sys
+    src = os.path.join(os.path.dirname(__file__), "..", "src")
+    interval = 0.25
+    with tempfile.TemporaryDirectory() as tmp:
+        log, rate = os.path.join(tmp, "requests.jsonl"), os.path.join(tmp, "osm-rate.json")
+        go = f"{__import__('time').time() + 1.0:.3f}"
+        procs = [subprocess.Popen([_sys.executable, "-c", _WORKER, src, log, rate, os.path.join(tmp, f"c-{t}.json"),
+                                   t, str(interval), go]) for t in ("a", "b")]
+        assert [p.wait(timeout=60) for p in procs] == [0, 0]
+        rows = sorted(json.loads(x) for x in open(log))
+        assert len(rows) == 6 and {t for _, t in rows} == {"a", "b"}
+        gaps = [b[0] - a[0] for a, b in zip(rows, rows[1:])]
+        assert min(gaps) >= interval - 1e-3, gaps

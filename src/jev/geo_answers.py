@@ -15,7 +15,10 @@ from map data, never written by a model.
   lookup     a provider interface (search a place, route to it). Offline
              tests use the fixture provider; OSMProvider calls Nominatim
              (search) and OSRM (route), cached on disk and rate-limited to
-             one request per second. ONLY the destination phrase (or the
+             one request per second across EVERY provider instance and
+             process on the machine (RateGate: a shared lock file and
+             last-request stamp; Nominatim's limit is per application,
+             not per instance). ONLY the destination phrase (or the
              type's search phrase) and the listing's coarse coordinates
              leave the machine: never a guest's name, never the message,
              never reservation data.
@@ -27,13 +30,19 @@ from map data, never written by a model.
              result by driving distance among the nearest few.
   answer     a fixed template with computed slots, rounded and phrased as
              approximations: "Hi! <Place> is about <X> miles away, roughly
-             <Y> minutes by car." Under 0.3 miles: "Hi! <Place> is a short
-             walk, about <Y> minutes." The listing's address never appears.
+             <Y> minutes by car without traffic." OSRM times are free-flow,
+             so a live lookup always says so (audit ruling, Oct 31, 2026).
+             An operator-pinned answer (times the operator checked, e.g. on
+             Google Maps for a guest-relevant day and time) keeps the plain
+             "roughly <Y> minutes by car." Under 0.3 miles: "Hi! <Place> is
+             a short walk, about <Y> minutes." The listing's address never
+             appears.
 
 Every failure is a HOLD: no answer goes, the message follows the
 actuator's existing fallback path. Recall is the cost, never a wrong
 answer.
 """
+import fcntl
 import json
 import math
 import os
@@ -42,6 +51,7 @@ import tempfile
 import time
 import urllib.parse
 import urllib.request
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
@@ -307,18 +317,98 @@ def write_json_atomic(path, obj, sleep=time.sleep):
     _retry_eperm(go, sleep=sleep)
 
 
+RATE_SCHEMA = "comfi-autopilot/osm-rate/v1"
+DEFAULT_RATE_FILE = "~/.cache/comfi-autopilot/osm-rate.json"
+
+
+def default_rate_path():
+    """One rate file per machine, whatever cache a provider uses: the
+    Nominatim limit is per application, not per cache or per instance.
+    JEV_OSM_RATE_FILE overrides the path."""
+    return os.path.expanduser(os.environ.get("JEV_OSM_RATE_FILE") or DEFAULT_RATE_FILE)
+
+
+class RateGate:
+    """At most one map request per `min_interval` seconds for every
+    OSMProvider sharing `path`: other instances in this process and other
+    processes on this machine alike (Nominatim's usage policy is an
+    absolute 1 request per second per application, and the actuator glue
+    builds a new provider per message).
+
+    An exclusive flock on `<path>.lock` is held across the whole request,
+    so requests run one at a time. `path` stores when the last request
+    started and, once it finished, when it ended (atomic write with the
+    VM's EPERM retry); the next request waits `min_interval` from there.
+    The clock is wall time, since a monotonic reading means nothing in
+    another process; a stamp ahead of the clock (a step backwards) or an
+    unreadable stamp waits the full interval. A gate that stays locked past
+    `lock_timeout` seconds raises ProviderError: the caller holds rather
+    than sending a request outside the gate."""
+
+    def __init__(self, path, min_interval=1.0, clock=time.time, sleep=time.sleep, lock_timeout=60.0):
+        self.path = path
+        self.min_interval = float(min_interval)
+        self.clock, self.sleep = clock, sleep
+        self.lock_timeout = float(lock_timeout)
+
+    def _last(self):
+        try:
+            with open(self.path, encoding="utf-8") as fh:
+                return float(json.load(fh)["last_request_at"])
+        except FileNotFoundError:
+            return None
+        except (OSError, ValueError, KeyError, TypeError):
+            return math.inf  # unreadable: wait the full interval
+
+    def _stamp(self):
+        write_json_atomic(self.path, {"schema": RATE_SCHEMA, "last_request_at": self.clock()}, sleep=self.sleep)
+
+    def _lock(self, fd):
+        deadline = time.monotonic() + self.lock_timeout
+        while True:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                return
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    raise ProviderError("the shared map rate gate stayed locked") from None
+                time.sleep(0.05)
+
+    @contextmanager
+    def slot(self):
+        """Wait for this request's turn, then hold the gate until it ends."""
+        os.makedirs(os.path.dirname(os.path.abspath(self.path)), mode=0o700, exist_ok=True)
+        fd = os.open(self.path + ".lock", os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            self._lock(fd)
+            last = self._last()
+            if last is not None:
+                elapsed = self.clock() - last
+                wait = self.min_interval if elapsed < 0 else self.min_interval - elapsed
+                if wait > 0:
+                    self.sleep(min(wait, self.min_interval))
+            self._stamp()  # a request that dies mid-flight still counts
+            try:
+                yield
+            finally:
+                self._stamp()  # the next request waits from this one's end
+        finally:
+            os.close(fd)  # closing the descriptor releases the lock
+
+
 class OSMProvider:
-    """Nominatim search + OSRM driving route, behind a disk cache and a one
-    request per second limiter. The query string is the destination phrase
-    (or a type's fixed search words) and nothing else. The listing's
-    coordinates go out only coarsened: the search box is rounded to 0.1
-    degree, the route origin to 3 decimals (about 100 m)."""
+    """Nominatim search + OSRM driving route, behind a disk cache and the
+    shared one-request-per-second RateGate. The query string is the
+    destination phrase (or a type's fixed search words) and nothing else.
+    The listing's coordinates go out only coarsened: the search box is
+    rounded to 0.1 degree, the route origin to 3 decimals (about 100 m)."""
     name = "osm"
     USER_AGENT = "ComfiAutopilot/0.1 (deterministic distance answers; staging)"
 
     def __init__(self, cache_path, nominatim="https://nominatim.openstreetmap.org",
                  osrm="https://router.project-osrm.org", min_interval=1.0, ttl=timedelta(days=30),
-                 http_get=None, clock=time.monotonic, sleep=time.sleep, now=None, timeout=10, retries=1):
+                 http_get=None, clock=time.time, sleep=time.sleep, now=None, timeout=10, retries=1,
+                 rate_path=None):
         self.cache_path = cache_path
         self.nominatim = nominatim.rstrip("/")
         self.osrm = osrm.rstrip("/")
@@ -329,7 +419,7 @@ class OSMProvider:
         self.now = now or (lambda: datetime.now(timezone.utc))
         self.timeout = timeout
         self.retries = int(retries)
-        self._last = None
+        self.gate = RateGate(rate_path or default_rate_path(), self.min_interval, clock=clock, sleep=sleep)
         self.sent = []
 
     # -- cache --
@@ -364,20 +454,16 @@ class OSMProvider:
             return json.loads(resp.read().decode("utf-8"))
 
     def _get(self, url):
-        """One GET, spaced at least min_interval after the previous one. A
-        transient failure (this VM's egress proxy drops connections at
-        random) is retried `retries` times, each retry spaced the same way;
-        then the caller holds."""
+        """One GET through the shared rate gate, at least min_interval after
+        the previous request by any provider. A transient failure (this VM's
+        egress proxy drops connections at random) is retried `retries`
+        times, each retry through the gate again; then the caller holds."""
         last = None
         for _ in range(1 + max(0, self.retries)):
-            if self._last is not None:
-                wait = self.min_interval - (self.clock() - self._last)
-                if wait > 0:
-                    self.sleep(wait)
-            self._last = self.clock()
             try:
-                return self.http_get(url)
-            except Exception as e:  # network, HTTP error, bad JSON
+                with self.gate.slot():
+                    return self.http_get(url)
+            except Exception as e:  # network, HTTP error, bad JSON, a gate that stayed locked
                 last = e
         raise ProviderError(f"{type(last).__name__}: {last}"[:200]) from None
 
@@ -486,12 +572,15 @@ def fmt_minutes(minutes):
     return hours if rest == 0 else f"{hours} {rest} minutes"
 
 
-def render(place_label, route):
-    """The answer text, from the template and computed slots only."""
+def render(place_label, route, pinned=False):
+    """The answer text, from the template and computed slots only. A live
+    lookup's drive time is OSRM's free-flow time, so it says "without
+    traffic"; an operator-pinned answer (`pinned`, times the operator
+    checked) keeps the plain wording. The short walk needs no qualifier."""
     if route.distance_m / MILE_M < WALK_UNDER_MILES:
         return f"Hi! {place_label} is a short walk, about {fmt_minutes(route.distance_m / WALK_M_PER_MIN)}."
     return f"Hi! {place_label} is about {fmt_miles(route.distance_m)} away, roughly " \
-           f"{fmt_minutes(route.duration_s / 60.0)} by car."
+           f"{fmt_minutes(route.duration_s / 60.0)} by car{'' if pinned else ' without traffic'}."
 
 
 @dataclass(frozen=True)
@@ -621,13 +710,13 @@ def _from_override(ov, common):
         route = Route(float(body["distance_m"]), float(body["duration_s"]))
     except (TypeError, ValueError):
         return _hold("override_tampered", "a pinned override is unreadable", **common)
-    text = render(body["place"], route)
+    text = render(body["place"], route, pinned=True)
     return GeoPlan("answer", "answer", "operator-pinned place", text, sha256(text), place={"name": body["place"]},
                    route={"distance_m": route.distance_m, "duration_s": route.duration_s}, override=True, **common)
 
 
 def _answer(label, place, route, common, detail):
-    text = render(label, route)
+    text = render(label, route, pinned=False)  # a live lookup: free-flow time
     return GeoPlan("answer", "answer", detail, text, sha256(text),
                    place={"name": place.name, "lat": place.lat, "lon": place.lon, "osm_id": place.osm_id,
                           "kinds": list(place.kinds)},
