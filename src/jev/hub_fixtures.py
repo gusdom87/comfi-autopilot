@@ -203,3 +203,24 @@ def fact_sheet():
 # The clock the fixture world runs at: an hour after the confirmations.
 FIXTURE_NOW = CONFIRMED_AT + timedelta(hours=1)
 ACCEPTED = {"status": "accepted"}
+
+# A real guest question (Oct 31, 2026; the words verbatim, nothing else
+# about the guest or the listing kept) and the kind of [edited] Hub item
+# that answers it, on a pseudonym listing outside the Cedar Hollow scope
+# (so the blind sets are unchanged). The kitchen bin is full: where is the
+# outdoor one? The item's wording is the fixture's own.
+FULL_BIN_QUESTION = "if the garbage bin in the kitchen is full is there an outside garbage bin we throw it away in?"
+FERNWOOD = "fernwood-flat"
+OUTDOOR_BIN_STATEMENT = "The outdoor garbage bins are in the other driveway, by the three-car garage."
+OUTDOOR_BIN_MARKDOWN = f"""# Fernwood Garden Flat (staged)
+
+Source: staged fixture in the Knowledge Hub export layout. Invented facts.
+
+## Trash Disposal
+- [edited] {OUTDOOR_BIN_STATEMENT}
+
+## Laundry
+- [edited] The washer and dryer are in the basement, at the bottom of the back stairs.
+"""
+# The same listing with the outdoor-bin item absent: the question must hold.
+NO_OUTDOOR_BIN_MARKDOWN = OUTDOOR_BIN_MARKDOWN.replace(f"## Trash Disposal\n- [edited] {OUTDOOR_BIN_STATEMENT}\n\n", "")

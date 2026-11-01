@@ -28,7 +28,13 @@ a coffee maker?") from the property's own Knowledge Hub, word for word.
              that intent's own vocabulary, no request or issue wording, no
              risky emoji, nothing barred, the Phase 0 guard silent. Check-in
              and checkout times, checkout steps, and wifi are NOT hub
-             topics: the pinned answer library owns them.
+             topics: the pinned answer library owns them. One closed
+             conditional clause is read as context, not as a request: the
+             INDOOR trash being full ("if the garbage bin in the kitchen is
+             full, is there an outside garbage bin...", a real guest
+             question, Oct 31, 2026). It only ever leads to a trash
+             question, and "outside" in the question needs an outdoor place
+             in the answer.
   answer     "Hi! " + the source statement(s), verbatim. The statement must
              satisfy the intent's own requirement (a trash statement names
              a place; a coffee maker statement says there is one) and name
@@ -190,6 +196,23 @@ def _phrases(*words):
 _WHERE_WORDS = ("where", "kept", "keep", "find", "located", "stored", "there", "here", "the unit", "the studio",
                 "the apartment", "the house", "the place", "in the unit")
 
+# The one conditional clause read as context rather than a request: the
+# INDOOR trash (kitchen or bathroom, named before or after the noun) being
+# full. A closed phrase, so nothing else can hide inside it; it is blanked
+# out before the request, coverage, and question checks run, and only a
+# trash question may follow it. "If the bins outside are full" is not this
+# clause: its "if" stays a request word and the message holds.
+TRASH_FULL_CONDITION = re.compile(
+    r"(?<![a-z'])(?:if|when|once)\s+(?:the|our|my|a)\s+"
+    r"(?:(?:kitchen|indoor|inside|bathroom)\s+(?:trash|garbage|rubbish)(?:\s+(?:bins?|cans?|bags?|baskets?))?"
+    r"|(?:trash|garbage|rubbish)(?:\s+(?:bins?|cans?|bags?|baskets?))?\s+(?:in|inside)\s+the\s+(?:kitchen|bathroom))"
+    r"\s+(?:(?:is|are|gets|get)\s+(?:full|filled(?:\s+up)?)|fills?\s+up)(?![a-z'])")
+# "outside" asked for: the answer must name an outdoor place.
+_OUTDOOR_ASKED = re.compile(r"\b(?:outside|outdoors?|exterior)\b")
+_OUTDOOR_PLACE = re.compile(
+    r"\b(?:outside|outdoors?|exterior|driveway|alley|alleyway|curb|curbside|garage|yard|backyard|street|sidewalk"
+    r"|porch|patio|deck|dumpsters?)\b|\b(?:side|back|behind)\s+(?:of\s+)?the\s+(?:house|building|garage)\b")
+
 
 @dataclass(frozen=True)
 class Intent:
@@ -198,16 +221,25 @@ class Intent:
     question: tuple         # regexes on the folded question
     require: tuple          # every one must match a statement for it to answer
     cover: object           # compiled vocabulary for whole-message coverage
-    items: tuple = ()       # (name, regex): named in the question -> must be in the answer
+    items: tuple = ()       # (name, regex[, answer regex]): named in the question -> must be in the answer
+                            # (the answer regex, when given, is what the statement must match instead)
 
 
 INTENTS = [
     Intent("trash.where", "trash",
-           (re.compile(r"\bwhere\b.{0,40}\b(?:trash|garbage|rubbish|recycl\w*|bins?|dumpsters?)\b"),),
+           (re.compile(r"\bwhere\b.{0,40}\b(?:trash|garbage|rubbish|recycl\w*|bins?|dumpsters?)\b"),
+            # "is there an outside garbage bin": a presence question counts only for an OUTDOOR bin
+            # (an indoor one, "is there a trash can in the bedroom", is not what the Hub item answers)
+            re.compile(r"\b(?:is\s+there|are\s+there|do\s+you\s+have|any)\s+(?:a\s+|an\s+|any\s+)?(?:outside|outdoors?)"
+                       r"\s+(?:(?:trash|garbage|rubbish|recycling)\s+)?(?:bins?|cans?|carts?|dumpsters?|trash|garbage)\b"),
+            re.compile(r"\b(?:is\s+there|are\s+there|any)\s+(?:a\s+|an\s+|any\s+)?(?:(?:trash|garbage|rubbish|recycling)"
+                       r"\s+)?(?:bins?|cans?|carts?|dumpsters?)\s+(?:outside|outdoors)\b")),
            (re.compile(r"\b(?:trash|garbage|recycl\w*|rubbish)\b"), LOCATION_RE),
            _phrases("trash", "garbage", "rubbish", "recycling", "recyclables", "bins", "bin", "trash cans", "trash can",
                     "garbage cans", "garbage can", "dumpster", "put", "throw", "throw away", "throw out", "take",
-                    "take out", "out", "goes", "go", "leave", "outside", *_WHERE_WORDS)),
+                    "take out", "out", "goes", "go", "leave", "outside", "outdoor", "outdoors", "away",
+                    "throw it away", "throw them away", "throw it out", "throw them out", *_WHERE_WORDS),
+           (("outside", _OUTDOOR_ASKED, _OUTDOOR_PLACE),)),
     Intent("laundry.where", "laundry",
            (re.compile(r"\bwhere\b.{0,30}\b(?:laundry|washer|(?<!hair )dryer|washing\s+machines?)\b(?!\s+sheets)"),
             re.compile(r"\b(?:is\s+there|are\s+there|do\s+you\s+have|does\s+(?:it|the\s+(?:unit|studio|place|apartment"
@@ -544,6 +576,11 @@ def classify(message):
             m = rx.search(text)
             if m:
                 return None, (), ("barred", f"{name}: {m.group(0)!r}")
+    # The barred checks above read the whole message; everything below
+    # reads it with the one closed full-indoor-bin clause blanked out.
+    cond = TRASH_FULL_CONDITION.search(text)
+    if cond:
+        text = text[:cond.start()] + " " * (cond.end() - cond.start()) + text[cond.end():]
     asks = T.request_hits(text)
     if asks:
         return None, (), ("request", f"request or issue: {', '.join(asks)[:120]}")
@@ -554,15 +591,19 @@ def classify(message):
     if not T.is_question(sent):
         return None, (), ("not_a_question", sent[:80])
     hit = [i for i in INTENTS if any(rx.search(sent) for rx in i.question)]
+    if not hit and cond and re.search(r"\bwhere\b", sent):
+        hit = [INTENT_BY_ID["trash.where"]]  # "if the kitchen trash is full, where do we take it?"
     if not hit:
         return None, (), ("no_hub_topic", sent[:80])
     if len(hit) > 1:
         return None, (), ("multi", f"intents {[i.id for i in hit]}")
     intent = hit[0]
+    if cond and intent.id != "trash.where":
+        return None, (), ("condition", f"a full-bin clause goes with a trash question only, not {intent.id}")
     gaps = T.coverage_gaps(text, intent.cover)
     if gaps:
         return None, (), ("coverage", f"not covered by {intent.id}: {', '.join(gaps)}"[:200])
-    items = tuple(name for name, rx in intent.items if rx.search(text))
+    items = tuple(it[0] for it in intent.items if it[1].search(text))
     return intent, items, None
 
 
@@ -604,7 +645,7 @@ def answer_for(intent, items, source_set):
     src, ev = min(renderable, key=lambda p: (len(set().union(*[set(st.anchors) for st in p[1]])), p[0].id))
     statement = " ".join(st.text for st in ev)
     folded = T.fold(statement)
-    missing = [name for name, rx in intent.items if name in items and not rx.search(folded)]
+    missing = [it[0] for it in intent.items if it[0] in items and not it[-1].search(folded)]
     if missing:
         return _hold("item_not_covered", f"the source does not mention {', '.join(missing)}", intent=intent.id,
                      topic=intent.topic, items=items, source_ids=(src.id,))

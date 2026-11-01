@@ -203,6 +203,63 @@ def test_confirmation_window_is_seven_days():
     assert p.verdict == "answer" and len(p.source_ids) == 1  # the hub item alone still answers
 
 
+# ---------- a real guest question: the kitchen bin is full ----------
+
+def _fern(md=F.OUTDOOR_BIN_MARKDOWN):
+    return H.build_source_set(F.FERNWOOD, H.parse_hub_markdown(md), {}, F.FIXTURE_NOW)
+
+
+def _ask(msg, md=F.OUTDOOR_BIN_MARKDOWN):
+    return H.plan(msg, F.FERNWOOD, _fern(md), reservation=F.ACCEPTED)
+
+
+def test_the_full_kitchen_bin_question_is_answered_from_the_outdoor_bin_item():
+    """The guest's words verbatim. Before this case the engine held it three
+    ways: "if" read as a request word, no trash form without "where" ("is
+    there an outside garbage bin"), and "kitchen", "full", "away" left
+    uncovered. The answer is the [edited] item, word for word."""
+    p = _ask(F.FULL_BIN_QUESTION)
+    assert p.verdict == "answer", (p.reason, p.detail)
+    assert p.text == "Hi! " + F.OUTDOOR_BIN_STATEMENT
+    assert (p.intent, p.topic, p.items) == ("trash.where", "trash", ("outside",))
+    assert p.source_ids == (_fern().sources[0].id,)
+    # the same question in its other natural shapes
+    for msg in ("If the kitchen trash is full, where do we take it?",
+                "Hi! When the garbage in the kitchen gets full, is there an outside bin we throw it in? Thanks!",
+                "Is there an outdoor garbage bin?", "Are there bins outside?"):
+        q = _ask(msg)
+        assert q.verdict == "answer" and q.text == "Hi! " + F.OUTDOOR_BIN_STATEMENT, (msg, q.reason, q.detail)
+
+
+def test_the_full_kitchen_bin_question_holds_when_the_fact_is_absent():
+    p = _ask(F.FULL_BIN_QUESTION, F.NO_OUTDOOR_BIN_MARKDOWN)
+    assert p.verdict == "hold" and p.reason == "missing"
+    # an [auto] item saying the same is never a source
+    auto = F.OUTDOOR_BIN_MARKDOWN.replace(f"- [edited] {F.OUTDOOR_BIN_STATEMENT}", f"- [auto] {F.OUTDOOR_BIN_STATEMENT}")
+    assert _ask(F.FULL_BIN_QUESTION, auto).reason == "missing"
+    # a trash item that names only an indoor place does not answer "outside"
+    indoor = F.OUTDOOR_BIN_MARKDOWN.replace(F.OUTDOOR_BIN_STATEMENT, "The trash can is in the kitchen, under the sink.")
+    p = _ask(F.FULL_BIN_QUESTION, indoor)
+    assert p.verdict == "hold" and p.reason == "item_not_covered"
+
+
+def test_the_full_bin_clause_is_narrow():
+    """Only the INDOOR bin being full is read as context; everything else
+    about it stays a request, an issue, or uncovered content, and holds."""
+    for msg in ("if the outside bins are full where do we put the trash?",        # "if" about the outdoor bins
+                "if the trash is full is there an outside bin?",                  # which trash: not said
+                "if the kitchen trash is full can you empty it?",                 # a request
+                "if the kitchen trash is full someone should come get it",        # an issue, not a question
+                "if the garbage bin in the kitchen is broken is there an outside garbage bin?",
+                "if the kitchen trash is full where are the extra bags?",         # spare bags, not the bin
+                "if the kitchen trash is full where is the coffee maker?",        # not a trash question
+                "The garbage bin in the kitchen is full. Is there an outside bin?",  # a statement first
+                "is there a garbage bin in the bedroom?",                         # an indoor presence question
+                "Where are the trash bags?"):                                     # spare bags, not the bin
+        p = _ask(msg)
+        assert p.verdict == "hold", (msg, p.text)
+
+
 def test_engines_make_no_model_call():
     """No import of any model client from the answer engines or ratings."""
     for name in ("hub_answers.py", "geo_answers.py", "answer_text.py", "ratings.py"):
