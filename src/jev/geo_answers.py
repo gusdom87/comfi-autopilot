@@ -12,22 +12,44 @@ from map data, never written by a model.
              money ask (the Phase 0 guard), a barred type (medical,
              emergency, police, fuel), a personal destination ("my
              friend's house", a street address, a guest's name) holds.
-  lookup     a provider interface (search a place, route to it). Offline
-             tests use the fixture provider; OSMProvider calls Nominatim
-             (search) and OSRM (route), cached on disk and rate-limited to
+  lookup     a provider interface (search a place, list every place of a
+             type within a radius, route to one or many). Offline tests use
+             the fixture provider; OSMProvider calls Nominatim (search),
+             Overpass (the radius list), and OSRM (route and route table),
+             cached on disk and rate-limited to
              one request per second across EVERY provider instance and
              process on the machine (RateGate: a shared lock file and
              last-request stamp; Nominatim's limit is per application,
              not per instance). ONLY the destination phrase (or the
              type's search phrase) and the listing's coarse coordinates
              leave the machine: never a guest's name, never the message,
-             never reservation data.
+             never reservation data. A radius list sends the type's fixed
+             OSM tags and the origin rounded to 3 decimals (about 100 m).
   judgment   deterministic code. Named place: the candidates whose names
              carry every word of the destination, within NAMED_RADIUS_KM
              of the listing; if the two nearest are within 15% of each
              other's distance, or a better-known place of that name sits
-             farther away, HOLD (ambiguous). Nearest of a type: the closest
-             result by driving distance among the nearest few.
+             farther away, HOLD (ambiguous). Nearest of a type (fixed Nov 1,
+             2026): never from a search list. Free-text search ranks by its
+             own importance and leaves out the closest places (from the real
+             building it named a grocery store 10 miles away with four about
+             1.5 miles away). The candidates are EVERY place of the type
+             within a radius (a complete radius list, Overpass), sorted by
+             straight-line distance; the nearest few are routed and the
+             shortest drive wins, and the claim is checked: every place
+             whose straight-line distance is under that drive was routed
+             (straight-line distance never exceeds road distance), and the
+             radius covers that drive, widening it until it does. Any doubt
+             holds: no radius list, an incomplete one, a candidate that
+             could be nearer but has no usable route, a nameless or
+             address-shaped winner. And the map itself must be trusted for
+             that type at that listing: OpenStreetMap leaves real places
+             out (it has no record of the movie theater 2 miles from the
+             real building), so a live nearest-of-type answer also needs an
+             operator coverage record for that listing and type, which
+             names the place a person checked on Google Maps; a different
+             live winner holds. An operator-pinned nearest-of-type answer
+             (the local pack) is used before any lookup.
   answer     a fixed template with computed slots, rounded and phrased as
              approximations: "Hi! <Place> is about <X> miles away, roughly
              <Y> minutes by car without traffic." OSRM times are free-flow,
@@ -72,7 +94,11 @@ PROMINENCE_MARGIN = 0.10     # a better-known same-name place farther away: hold
 SAME_PLACE_M = 150.0         # two results this close with one name are one place
 TOO_CLOSE_M = 30.0           # "that's here": hold
 MAX_ROUTE_RATIO = 4.0        # driving distance over straight-line distance: past this the data is suspect
-TYPE_ROUTE_CANDIDATES = 3    # nearest-of-type: route the nearest few, keep the shortest drive
+RANK_CANDIDATES = 8          # nearest-of-type: route the nearest few by straight line, keep the shortest drive
+NEARBY_START_KM = 5.0        # the first radius list; widened when it is empty or the shortest drive is longer
+NEARBY_GROWTH = 2.5
+NEARBY_ROUNDS = 5
+NEARBY_MARGIN_M = 250.0      # the list is drawn around the coarse (3-decimal) origin: pad for the rounding
 WALK_UNDER_MILES = 0.3
 WALK_M_PER_MIN = 80.0        # about 3 mph
 MILE_M = 1609.344
@@ -121,8 +147,9 @@ TYPES = [
     (r"pharmac(?:y|ies)|drug\s?stores?|chemists?",
      TypeSpec("pharmacy", "pharmacy", "pharmacy", ("amenity:pharmacy", "shop:chemist"))),
     (r"(?:train|metra|railway|rail|commuter\s+rail|commuter\s+train)\s+stations?|metra|train\s+stops?",
-     TypeSpec("train_station", "train station", "train station",
-              ("railway:station", "railway:halt", "public_transport:station"), radius_km=40.0)),
+     # railway tags only: a public_transport=station alone can be a bus station
+     TypeSpec("train_station", "train station", "train station", ("railway:station", "railway:halt"),
+              radius_km=40.0)),
     (r"coffee\s+(?:shops?|places?|spots?)|cafes?",
      TypeSpec("coffee_shop", "coffee shop", "cafe", ("amenity:cafe",))),
     (r"(?:japanese|sushi|ramen)\s+" + _R + r"|sushi",
@@ -317,6 +344,16 @@ class ProviderError(Exception):
     pass
 
 
+@dataclass(frozen=True)
+class Nearby:
+    """Every place of the requested kinds within a radius. `complete` is
+    the provider's word that nothing was cut off (no result cap, no server
+    timeout); a list that is not complete never proves what is nearest."""
+    places: tuple
+    complete: bool
+    source: str = ""
+
+
 def _retry_eperm(fn, sleep=time.sleep, waits=(5, 10, 20, 30, 45, 60)):
     """The VM's intermittent EPERM on write (AGENTS.md, Oct 30, 2026): retry
     the whole atomic write with backoff, about 3 minutes in all."""
@@ -426,22 +463,57 @@ class RateGate:
             os.close(fd)  # closing the descriptor releases the lock
 
 
+_OSM_WORD = re.compile(r"^[a-z_]+$")
+
+
+def _overpass_places(doc, kinds):
+    """Compact places from an Overpass `out center tags` answer, or a
+    ProviderError: an answer that is not a clean, complete element list
+    (a server remark means a timeout or a runtime error) is never used and
+    never cached."""
+    if not isinstance(doc, dict) or not isinstance(doc.get("elements"), list):
+        raise ProviderError("the radius list is not an element list")
+    if doc.get("remark"):
+        raise ProviderError(f"the radius list is incomplete: {str(doc.get('remark'))[:120]}")
+    keys = sorted({k.split(":", 1)[0] for k in kinds})
+    out = []
+    for el in doc["elements"]:
+        try:
+            pt = el["center"] if el.get("type") in ("way", "relation") else el
+            tags = el.get("tags") or {}
+            out.append({"name": str(tags.get("name") or "").strip(), "lat": float(pt["lat"]), "lon": float(pt["lon"]),
+                        "kinds": [f"{k}:{tags[k]}" for k in keys if k in tags],
+                        "cuisine": [c.strip().lower() for c in str(tags.get("cuisine") or "").split(";") if c.strip()],
+                        "osm_id": f"{el['type']}/{el['id']}"})
+        except (KeyError, TypeError, ValueError, AttributeError):
+            raise ProviderError("a place in the radius list has no usable position") from None
+    return out
+
+
 class OSMProvider:
-    """Nominatim search + OSRM driving route, behind a disk cache and the
-    shared one-request-per-second RateGate. The query string is the
-    destination phrase (or a type's fixed search words) and nothing else.
-    The listing's coordinates go out only coarsened: the search box is
-    rounded to 0.1 degree, the route origin to 3 decimals (about 100 m)."""
+    """Nominatim search, Overpass radius lists, and OSRM driving routes,
+    behind a disk cache and the shared one-request-per-second RateGate. The
+    search string is the destination phrase and nothing else; a radius list
+    asks for a type's fixed OSM tags. The listing's coordinates go out only
+    coarsened: the search box is rounded to 0.1 degree, the radius-list and
+    route origin to 3 decimals (about 100 m). Every request is a GET (this
+    VM's egress proxy hangs POSTs). The map is never trusted by itself for
+    "nearest": `coverage_verified` is False, so a live nearest-of-type
+    answer needs the operator's coverage record (see plan)."""
     name = "osm"
+    coverage_verified = False
     USER_AGENT = "ComfiAutopilot/0.1 (deterministic distance answers; staging)"
 
     def __init__(self, cache_path, nominatim="https://nominatim.openstreetmap.org",
-                 osrm="https://router.project-osrm.org", min_interval=1.0, ttl=timedelta(days=30),
+                 osrm="https://router.project-osrm.org", overpass="https://overpass-api.de/api/interpreter",
+                 min_interval=1.0, ttl=timedelta(days=30),
                  http_get=None, clock=time.time, sleep=time.sleep, now=None, timeout=10, retries=1,
-                 rate_path=None):
+                 rate_path=None, overpass_timeout=60):
         self.cache_path = cache_path
         self.nominatim = nominatim.rstrip("/")
         self.osrm = osrm.rstrip("/")
+        self.overpass = overpass.rstrip("/")
+        self.overpass_timeout = int(overpass_timeout)
         self.min_interval = float(min_interval)
         self.ttl = ttl
         self.http_get = http_get or self._urlopen
@@ -480,7 +552,8 @@ class OSMProvider:
     # -- http --
     def _urlopen(self, url):
         req = urllib.request.Request(url, headers={"User-Agent": self.USER_AGENT, "Accept": "application/json"})
-        with urllib.request.urlopen(req, timeout=self.timeout) as resp:
+        timeout = self.overpass_timeout if url.startswith(self.overpass + "?") else self.timeout
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             return json.loads(resp.read().decode("utf-8"))
 
     def _get(self, url):
@@ -526,6 +599,65 @@ class OSMProvider:
             except (KeyError, TypeError, ValueError):
                 continue
         return out
+
+    def nearby(self, kinds, near, radius_km, cuisine=()):
+        """Every place carrying one of `kinds` (OSM "key:value") within
+        `radius_km` of `near`: one Overpass radius query, no result cap.
+        The circle is drawn around the coarse origin and padded by
+        NEARBY_MARGIN_M so it still covers the full radius around the
+        precise one; the engine measures distances itself. Cuisine is
+        filtered by the engine, not here."""
+        tags = sorted(set(kinds))
+        for k in tags:
+            key, _, val = k.partition(":")
+            if not (_OSM_WORD.match(key) and _OSM_WORD.match(val)):
+                raise ProviderError(f"not an OSM kind: {k!r}")
+        lat, lon = round(near[0], 3), round(near[1], 3)
+        r = int(math.ceil(float(radius_km) * 1000.0 + NEARBY_MARGIN_M))
+        body = "".join('nwr["{}"="{}"](around:{},{:.3f},{:.3f});'.format(*k.split(":", 1), r, lat, lon) for k in tags)
+        q = f"[out:json][timeout:{max(10, self.overpass_timeout - 10)}];({body});out center tags;"
+        url = f"{self.overpass}?{urllib.parse.urlencode({'data': q})}"
+        key = "nearby:" + url
+        rows = self._cached(key)
+        if rows is None:
+            self.sent.append(("nearby", ",".join(tags), float(radius_km)))
+            rows = _overpass_places(self._get(url), tags)
+            self._store(key, rows)
+        try:
+            places = tuple(Place(name=str(r["name"]), lat=float(r["lat"]), lon=float(r["lon"]),
+                                 kinds=tuple(r["kinds"]), cuisine=tuple(r["cuisine"]), osm_id=str(r["osm_id"]))
+                           for r in rows)
+        except (KeyError, TypeError, ValueError):
+            raise ProviderError("the cached radius list is unreadable") from None
+        return Nearby(places, True, "overpass")
+
+    def routes(self, origin, dests):
+        """Driving routes from `origin` to each of `dests` in one OSRM table
+        request: a list of Route (or None where there is no route), in order."""
+        dests = list(dests)
+        if not dests:
+            return []
+        o = (round(origin[0], 3), round(origin[1], 3))
+        coords = ";".join([f"{o[1]:.3f},{o[0]:.3f}"] + [f"{d.lon:.6f},{d.lat:.6f}" for d in dests])
+        url = f"{self.osrm}/table/v1/driving/{coords}?sources=0&annotations=distance,duration"
+        key = "table:" + url
+        doc = self._cached(key)
+        if doc is None:
+            self.sent.append(("table", len(dests)))
+            doc = self._get(url)
+            if not isinstance(doc, dict):
+                raise ProviderError("the route table is not an object")
+            self._store(key, doc)
+        try:
+            if doc.get("code") != "Ok":
+                return [None] * len(dests)
+            dist, dur = doc["distances"][0], doc["durations"][0]
+            if len(dist) != len(dests) + 1 or len(dur) != len(dests) + 1:
+                raise ProviderError("the route table does not match the places asked for")
+            return [Route(float(a), float(b)) if a is not None and b is not None else None
+                    for a, b in zip(dist[1:], dur[1:])]
+        except (AttributeError, KeyError, TypeError, ValueError, IndexError):
+            raise ProviderError("the route table is unreadable") from None
 
     def route(self, origin, dest):
         o = (round(origin[0], 3), round(origin[1], 3))
@@ -692,6 +824,43 @@ def override_key(property_id, dest):
     return f"{property_id}|{' '.join(_tokens(dest))}"
 
 
+# Keys for a nearest-of-type record. A ":" never occurs in a named key
+# (those are word tokens), so the three kinds cannot collide.
+def type_override_key(property_id, type_id):
+    """An operator-pinned nearest-of-type answer (the local pack)."""
+    return f"{property_id}|nearest:{type_id}"
+
+
+def coverage_key(property_id, type_id):
+    """The operator's record that the live map's nearest place of this type
+    for this listing was checked (on Google Maps) and is right."""
+    return f"{property_id}|coverage:{type_id}"
+
+
+def coverage_body(type_id, osm_id, name):
+    return {"coverage": type_id, "nearest": osm_id, "name": name}
+
+
+def coverage_record(type_id, osm_id, name, note, confirmed_at):
+    """A coverage record as it is stored in the overrides file."""
+    body = coverage_body(type_id, osm_id, name)
+    return {**body, "confirmed_sha256": sha256(json.dumps(body, sort_keys=True)), "note": note,
+            "confirmed_at": confirmed_at}
+
+
+def coverage_problem(rec, type_id):
+    """None when `rec` is an intact coverage record for `type_id`."""
+    if not isinstance(rec, dict):
+        return (f"live nearest-{type_id} answers are not verified for this listing: pin the answer, "
+                "or record the map's coverage once a person has checked it")
+    body = coverage_body(rec.get("coverage"), rec.get("nearest"), rec.get("name"))
+    if rec.get("confirmed_sha256") != sha256(json.dumps(body, sort_keys=True)):
+        return "a coverage record no longer matches its hash"
+    if body["coverage"] != type_id or not body["nearest"]:
+        return "the coverage record does not name a verified place of this type"
+    return None
+
+
 def plan(message, property_id, origin, provider, *, reservation=None, scope=None, excluded=(),
          forbidden_tokens=(), overrides=None, parsed=None, check_message=True):
     """The one function that produces a mapping answer, or a hold.
@@ -718,13 +887,25 @@ def plan(message, property_id, origin, provider, *, reservation=None, scope=None
         return _hold("no_origin", "no listing coordinates on file", mode=parsed.mode, dest=parsed.dest)
     common = dict(mode=parsed.mode, dest=parsed.dest,
                   type_id=parsed.type_spec.id if parsed.type_spec else None)
-    ov = (overrides or {}).get(override_key(property_id, parsed.dest))
+    overrides = overrides or {}
+    ov = overrides.get(override_key(property_id, parsed.dest))
     if ov is not None:
         return _from_override(ov, common)
+    expect = None
+    if parsed.mode == "type":
+        spec = parsed.type_spec
+        ov = overrides.get(type_override_key(property_id, spec.id))
+        if ov is not None:
+            return _from_override(ov, common, label=spec.label)
+        if not getattr(provider, "coverage_verified", False):
+            why = coverage_problem(overrides.get(coverage_key(property_id, spec.id)), spec.id)
+            if why:
+                return _hold("unverified_type", why, **common)
+            expect = overrides[coverage_key(property_id, spec.id)]
     sent_before = len(getattr(provider, "sent", []))
     try:
         if parsed.mode == "type":
-            res = _nearest_of_type(parsed.type_spec, origin, provider, common)
+            res = _nearest_of_type(parsed.type_spec, origin, provider, common, expect)
         else:
             res = _named(parsed.dest, origin, provider, common)
     except ProviderError as e:
@@ -733,9 +914,11 @@ def plan(message, property_id, origin, provider, *, reservation=None, scope=None
     return GeoPlan(**{**res.__dict__, "sent": sent})
 
 
-def _from_override(ov, common):
+def _from_override(ov, common, label=None):
     """An operator-pinned answer for this listing and destination (the
-    correction flow): used only while its hash matches what was pinned."""
+    correction flow, or the local pack): used only while its hash matches
+    what was pinned. A nearest-of-type pin (`label`) keeps the type's
+    wording: "The nearest <label>, <place>, ..."."""
     body = {k: ov.get(k) for k in ("place", "distance_m", "duration_s")}
     if ov.get("confirmed_sha256") != sha256(json.dumps(body, sort_keys=True)):
         return _hold("override_tampered", "a pinned override no longer matches its hash", **common)
@@ -745,7 +928,7 @@ def _from_override(ov, common):
         route = Route(float(body["distance_m"]), float(body["duration_s"]))
     except (TypeError, ValueError):
         return _hold("override_tampered", "a pinned override is unreadable", **common)
-    text = render(body["place"], route, pinned=True)
+    text = render(f"The nearest {label}, {body['place']}," if label else body["place"], route, pinned=True)
     return GeoPlan("answer", "answer", "operator-pinned place", text, sha256(text), place={"name": body["place"]},
                    route={"distance_m": route.distance_m, "duration_s": route.duration_s}, override=True, **common)
 
@@ -791,35 +974,85 @@ def _named(dest, origin, provider, common):
     return _answer(place.name, place, route, common, f"named place, {len(cands)} results, {len(near)} plausible")
 
 
-def _nearest_of_type(spec, origin, provider, common):
-    cands = provider.search(spec.query, origin, spec.radius_km, limit=20)
+def _routes(provider, origin, places):
+    """Routes to each of `places`, in order: one table request when the
+    provider has one, else one route each."""
+    many = getattr(provider, "routes", None)
+    if callable(many):
+        out = list(many(origin, list(places)))
+        if len(out) != len(places):
+            raise ProviderError("the route table does not match the candidates")
+        return out
+    return [provider.route(origin, p) for p in places]
+
+
+def _candidates(spec, origin, places, radius_km):
+    """The places that are this type, within the radius of the precise
+    origin, one entry per real place, nearest first (ties by id)."""
     keep = []
-    for c in cands:
+    for c in places:
         if not set(c.kinds) & set(spec.kinds):
             continue
         if spec.cuisine and not set(c.cuisine) & set(spec.cuisine):
             continue
-        if haversine_m(origin, (c.lat, c.lon)) > spec.radius_km * 1000.0:
+        if haversine_m(origin, (c.lat, c.lon)) > radius_km * 1000.0:
             continue
         keep.append(c)
-    # A nameless row is dropped as before. An address-shaped name stays in
-    # the race: if it is the nearest, the answer HOLDS (naming the next
-    # place "the nearest" would be wrong, and the address never renders).
-    keep = [c for c in _dedupe(keep, origin) if _name_shape_ok(c.name)]
-    if not keep:
-        return _hold("not_found", f"no {spec.label} within {spec.radius_km:.0f} km", **common)
-    best = None
-    for c in keep[:TYPE_ROUTE_CANDIDATES]:
-        d = haversine_m(origin, (c.lat, c.lon))
-        if d < TOO_CLOSE_M:
+    return _dedupe(keep, origin)
+
+
+def _nearest_of_type(spec, origin, provider, common, expect=None):
+    """The nearest place of a type by road, from a complete radius list.
+    Straight-line distance never exceeds road distance, so the claim holds
+    once (1) every candidate with a straight-line distance under the best
+    drive was routed and has a usable route, and (2) the radius covers that
+    drive; the radius widens until it does, or the answer holds. A nameless
+    place stays in the race: if it wins, the answer holds (naming the next
+    one "the nearest" would be wrong)."""
+    nearby = getattr(provider, "nearby", None)
+    if not callable(nearby):
+        return _hold("no_poi_source", "nearest-of-type needs a radius list of places; a search list never proves "
+                     "what is nearest", **common)
+    radius = min(NEARBY_START_KM, spec.radius_km)
+    for _ in range(NEARBY_ROUNDS):
+        found = nearby(spec.kinds, origin, radius, cuisine=spec.cuisine)
+        if not isinstance(found, Nearby) or not found.complete:
+            return _hold("incomplete", f"the radius list for {spec.label} within {radius:.0f} km is not complete",
+                         **common)
+        cands = _candidates(spec, origin, found.places, radius)
+        if not cands:
+            if radius >= spec.radius_km:
+                return _hold("not_found", f"no {spec.label} within {spec.radius_km:.0f} km", **common)
+            radius = min(spec.radius_km, radius * NEARBY_GROWTH)
             continue
-        r = provider.route(origin, c)
-        if _route_ok(r, d) and (best is None or r.distance_m < best[1].distance_m):
-            best = (c, r)
-    if best is None:
-        return _hold("no_route", f"no usable route to the nearest {spec.label}", **common)
-    place, route = best
-    if not _name_ok(place.name):
-        return _hold("place_name", f"the nearest {spec.label}'s name looks like a street address", **common)
-    return _answer(f"The nearest {spec.label}, {place.name},", place, route, common,
-                   f"nearest of type {spec.id} among {len(keep)}")
+        dist = [haversine_m(origin, (c.lat, c.lon)) for c in cands]
+        if dist[0] < TOO_CLOSE_M:
+            return _hold("too_close", f"the nearest {spec.label} is at the listing itself", **common)
+        ranked = cands[:RANK_CANDIDATES]
+        routes = _routes(provider, origin, ranked)
+        ok = [i for i, r in enumerate(routes) if _route_ok(r, dist[i])]
+        if not ok:
+            return _hold("no_route", f"no usable route to any {spec.label} nearby", **common)
+        win = min(ok, key=lambda i: (routes[i].distance_m, dist[i], ranked[i].osm_id))
+        best = routes[win].distance_m
+        if any(i not in ok and dist[i] < best for i in range(len(ranked))):
+            return _hold("no_route", f"a {spec.label} that could be nearer by road has no usable route", **common)
+        if len(cands) > len(ranked) and dist[len(ranked)] < best:
+            return _hold("unverified_nearest", f"more {spec.label} candidates than were routed could be nearer by "
+                         "road", **common)
+        if best > radius * 1000.0:
+            if radius >= spec.radius_km:
+                return _hold("unverified_nearest", f"the shortest drive to a {spec.label} is longer than the "
+                             f"{spec.radius_km:.0f} km searched", **common)
+            radius = min(spec.radius_km, max(radius * NEARBY_GROWTH, best / 1000.0 + 0.5))
+            continue
+        place, route = ranked[win], routes[win]
+        if not _name_ok(place.name):
+            return _hold("place_name", f"the nearest {spec.label} has no name, or its name looks like a street "
+                         "address", **common)
+        if expect is not None and place.osm_id != expect.get("nearest"):
+            return _hold("coverage_changed", f"the nearest {spec.label} on the map is not the one a person "
+                         "verified for this listing; re-check it", **common)
+        return _answer(f"The nearest {spec.label}, {place.name},", place, route, common,
+                       f"nearest of type {spec.id} among {len(cands)} within {radius:.1f} km (radius list)")
+    return _hold("unverified_nearest", f"the radius list for {spec.label} did not settle", **common)

@@ -447,3 +447,250 @@ def test_two_processes_share_one_limit():
         assert len(rows) == 6 and {t for _, t in rows} == {"a", "b"}
         gaps = [b[0] - a[0] for a, b in zip(rows, rows[1:])]
         assert min(gaps) >= interval - 1e-3, gaps
+
+
+# ---------- nearest of a type: a complete radius list, never a search list (Nov 1, 2026) ----------
+
+def _grocery_world(extra=(), routes=None):
+    """Two staged supermarkets plus `extra` places (pid, name, km, bearing, route_km, kinds)."""
+    places = {k: v for k, v in GF.PLACES.items() if "shop:supermarket" not in v.kinds}
+    rts = {k: v for k, v in GF.ROUTES.items() if k in places}
+    for pid, name, km, bearing, route_km, kinds in extra:
+        lat, lon = GF._offset(GF.ORIGIN, km, bearing)
+        places[pid] = G.Place(name, lat, lon, kinds, 0.1, (), pid)
+        rts[pid] = G.Route(route_km * 1000.0, route_km * 90.0)
+    rts.update(routes or {})
+    return places, rts
+
+
+SUPER = ("shop:supermarket",)
+
+
+class SearchMisses(GF.FixtureProvider):
+    """A geocoder that leaves the closest places out of its list (what
+    Nominatim did from the real building): `search` never returns `hidden`."""
+    def __init__(self, hidden, *a, **k):
+        super().__init__(*a, **k)
+        self.hidden = set(hidden)
+
+    def search(self, query, near, radius_km, limit=10):
+        return [p for p in super().search(query, near, radius_km, limit) if p.osm_id not in self.hidden]
+
+
+def test_the_nearest_comes_from_the_radius_list_not_the_search_list():
+    places, routes = _grocery_world([("near-1", "Corner Market", 2.3, 10, 2.9, SUPER),
+                                     ("near-2", "Prairie Foods", 2.4, 200, 3.1, SUPER),
+                                     ("far-1", "Big Box Grocery", 16.0, 90, 17.5, SUPER)])
+    prov = SearchMisses({"near-1", "near-2"}, places, routes)
+    assert {p.osm_id for p in prov.search("supermarket", GF.ORIGIN, 25.0, 20)} == {"far-1"}  # the old failure
+    prov.sent.clear()
+    p = _plan("Where's the closest grocery store?", prov)
+    assert p.verdict == "answer" and p.place["osm_id"] == "near-1", p
+    assert p.text.startswith("Hi! The nearest grocery store, Corner Market, is about 2 miles away")
+    assert p.text.endswith(" by car without traffic.")
+    assert not [s for s in prov.sent if s[0] == "search"]  # a type question never searches
+
+
+def test_a_provider_without_a_radius_list_holds():
+    class SearchOnly:
+        coverage_verified = True
+        sent = []
+
+        def search(self, *a, **k):
+            return list(GF.PLACES.values())
+
+        def route(self, origin, dest):
+            return GF.ROUTES.get(dest.osm_id)
+    p = _plan("Where's the nearest pharmacy?", SearchOnly())
+    assert p.verdict == "hold" and p.reason == "no_poi_source"
+    assert _plan("How far is Sakura Garden?", SearchOnly()).verdict == "answer"  # named places as before
+
+
+def test_an_incomplete_radius_list_holds():
+    class Partial(GF.FixtureProvider):
+        def nearby(self, *a, **k):
+            full = super().nearby(*a, **k)
+            return G.Nearby(full.places, False, "partial")
+    p = _plan("Where's the nearest pharmacy?", Partial())
+    assert p.verdict == "hold" and p.reason == "incomplete"
+
+
+def test_the_shortest_drive_wins_over_the_shortest_straight_line():
+    # across a river: 1.0 km away in a straight line, 3.5 km by road; the other 2.0 km and 2.6 km
+    places, routes = _grocery_world([("across", "River Market", 1.0, 0, 3.5, SUPER),
+                                     ("bridge", "Bridge Street Foods", 2.0, 180, 2.6, SUPER)])
+    p = _plan("Is there a grocery store nearby?", GF.FixtureProvider(places, routes))
+    assert p.verdict == "answer" and p.place["osm_id"] == "bridge", p
+
+
+def test_a_candidate_that_could_be_nearer_without_a_route_holds():
+    places, routes = _grocery_world([("noroute", "Lost Market", 1.0, 0, 1.3, SUPER),
+                                     ("ok", "Found Market", 2.0, 180, 2.6, SUPER)])
+    p = _plan("Is there a grocery store nearby?", GF.FixtureProvider(places, routes, fail_routes={"noroute"}))
+    assert p.verdict == "hold" and p.reason == "no_route"
+    # a place without a route that is farther in a straight line than the best drive does not matter
+    places, routes = _grocery_world([("noroute", "Lost Market", 3.5, 0, 4.0, SUPER),
+                                     ("ok", "Found Market", 2.0, 180, 2.6, SUPER)])
+    p = _plan("Is there a grocery store nearby?", GF.FixtureProvider(places, routes, fail_routes={"noroute"}))
+    assert p.verdict == "answer" and p.place["osm_id"] == "ok"
+
+
+def test_more_candidates_than_routed_that_could_be_nearer_hold():
+    # nine stores between 1.0 and 1.8 km in a straight line, every drive 3.5 km: the ninth, never routed,
+    # could be the nearest by road
+    extra = [(f"s{i}", f"Store {chr(65 + i)}", 1.0 + 0.1 * i, 40 * i, 3.5, SUPER) for i in range(9)]
+    places, routes = _grocery_world(extra)
+    p = _plan("Is there a grocery store nearby?", GF.FixtureProvider(places, routes))
+    assert p.verdict == "hold" and p.reason == "unverified_nearest"
+
+
+def test_the_radius_widens_until_it_covers_the_drive():
+    # nothing within 5 km: the list widens and finds the one at 9 km
+    places, routes = _grocery_world([("far", "Valley Foods", 9.0, 45, 10.5, SUPER)])
+    prov = GF.FixtureProvider(places, routes)
+    p = _plan("Is there a grocery store nearby?", prov)
+    assert p.verdict == "answer" and p.place["osm_id"] == "far"
+    radii = [s[2] for s in prov.sent if s[0] == "nearby"]
+    assert radii[0] == G.NEARBY_START_KM and radii[-1] >= 10.5 and radii == sorted(radii)
+    # 4 km away in a straight line but a 9 km drive, with a 6 km / 6.5 km store just outside the first list
+    places, routes = _grocery_world([("loop", "Loop Market", 4.0, 0, 9.0, SUPER),
+                                     ("edge", "Edge Market", 6.0, 180, 6.5, SUPER)])
+    p = _plan("Is there a grocery store nearby?", GF.FixtureProvider(places, routes))
+    assert p.verdict == "answer" and p.place["osm_id"] == "edge", p
+    # nothing within the type's whole radius: hold, never "there is none"
+    places, routes = _grocery_world()
+    p = _plan("Is there a grocery store nearby?", GF.FixtureProvider(places, routes))
+    assert p.verdict == "hold" and p.reason == "not_found" and p.text is None
+
+
+def test_a_nameless_nearest_place_holds():
+    places, routes = _grocery_world([("anon", "", 1.0, 0, 1.3, SUPER), ("named", "Named Market", 2.0, 180, 2.6, SUPER)])
+    p = _plan("Is there a grocery store nearby?", GF.FixtureProvider(places, routes))
+    assert p.verdict == "hold" and p.reason == "place_name"
+
+
+class RealMap(GF.FixtureProvider):
+    """The fixture map behaving like the real one: not ground truth."""
+    coverage_verified = False
+
+
+def test_the_real_map_needs_a_coverage_record_naming_the_checked_place():
+    prov = RealMap()
+    p = _plan("Where's the nearest pharmacy?", prov)
+    assert p.verdict == "hold" and p.reason == "unverified_type" and prov.sent == []  # no lookup at all
+    rec = G.coverage_record("pharmacy", "p-pharm", "Cedar Pharmacy", "checked on Google Maps", "2026-11-01T07:00:00+00:00")
+    key = G.coverage_key("cedar-1a", "pharmacy")
+    p = _plan("Where's the nearest pharmacy?", RealMap(), overrides={key: rec})
+    assert p.verdict == "answer" and p.place["osm_id"] == "p-pharm" and p.text.endswith(" without traffic.")
+    # the map's winner is not the place that was checked: hold
+    other = G.coverage_record("pharmacy", "p-pharm2", "Millbrook Drug Mart", "x", "2026-11-01T07:00:00+00:00")
+    assert _plan("Where's the nearest pharmacy?", RealMap(), overrides={key: other}).reason == "coverage_changed"
+    # a tampered record, or one for another type, holds
+    assert _plan("Where's the nearest pharmacy?", RealMap(), overrides={key: dict(rec, nearest="p-pharm2")}).reason \
+        == "unverified_type"
+    assert _plan("Where's the nearest pharmacy?", RealMap(),
+                 overrides={key: G.coverage_record("grocery", "p-pharm", "Cedar Pharmacy", "x", "t")}).reason \
+        == "unverified_type"
+    # a record for one listing does not cover another
+    assert G.plan("Where's the nearest pharmacy?", "cedar-1b", GF.ORIGIN, RealMap(), reservation=OK, scope=SCOPE,
+                  overrides={key: rec}).reason == "unverified_type"
+    # named places need no coverage record
+    assert _plan("How far is Sakura Garden?", RealMap()).verdict == "answer"
+
+
+def test_a_pinned_nearest_of_type_answer_keeps_the_type_wording_and_makes_no_lookup():
+    body = {"place": "Cedar Pharmacy", "distance_m": 2400.0, "duration_s": 300.0}
+    ov = dict(body, confirmed_sha256=sha256(json.dumps(body, sort_keys=True)), note="Google Maps, Sat 10 AM")
+    key = G.type_override_key("cedar-1a", "pharmacy")
+    for msg in ("Where's the nearest pharmacy?", "Is there a drug store nearby?", "closest pharmacy?"):
+        prov = RealMap()
+        p = _plan(msg, prov, overrides={key: ov})
+        assert p.verdict == "answer" and p.override and prov.sent == [], (msg, p)
+        assert p.text == "Hi! The nearest pharmacy, Cedar Pharmacy, is about 1.5 miles away, roughly 5 minutes by car."
+    assert _plan("Where's the nearest pharmacy?", overrides={key: dict(ov, duration_s=60.0)}).reason \
+        == "override_tampered"
+    addr = {"place": "45 Archer Ave", "distance_m": 2400.0, "duration_s": 300.0}
+    bad = dict(addr, confirmed_sha256=sha256(json.dumps(addr, sort_keys=True)))
+    p = _plan("Where's the nearest pharmacy?", overrides={key: bad})
+    assert p.verdict == "hold" and p.reason == "place_name" and p.text is None
+    # the three key kinds never collide
+    assert len({G.override_key("cedar-1a", "nearest pharmacy"), G.type_override_key("cedar-1a", "pharmacy"),
+                G.coverage_key("cedar-1a", "pharmacy")}) == 3
+
+
+class OverpassHTTP:
+    """A fake Overpass and OSRM table: two supermarkets (a node and a way
+    with a center) and a route table."""
+    def __init__(self, remark=None):
+        self.urls, self.remark = [], remark
+
+    def __call__(self, url):
+        self.urls.append(url)
+        if "/interpreter?" in url:
+            doc = {"osm3s": {"timestamp_osm_base": "2026-11-01T00:00:00Z"}, "elements": [
+                {"type": "node", "id": 11, "lat": 41.0101, "lon": -86.9902,
+                 "tags": {"shop": "supermarket", "name": "Corner Market"}},
+                {"type": "way", "id": 22, "center": {"lat": 40.9871, "lon": -87.0123},
+                 "tags": {"shop": "supermarket", "name": "Prairie Foods"}}]}
+            if self.remark:
+                doc["remark"] = self.remark
+            return doc
+        if "/table/v1/driving/" in url:
+            return {"code": "Ok", "distances": [[0, 1900.0, 2600.0]], "durations": [[0, 240.0, 330.0]]}
+        raise AssertionError(url)
+
+
+def test_osm_radius_list_and_route_table():
+    with tempfile.TemporaryDirectory() as tmp:
+        http = OverpassHTTP()
+        prov = G.OSMProvider(os.path.join(tmp, "geo-cache.json"), http_get=http, clock=Clock(), sleep=lambda s: None,
+                             rate_path=os.path.join(tmp, "osm-rate.json"))
+        origin = (41.002345, -87.001234)
+        found = prov.nearby(("shop:supermarket", "shop:grocery"), origin, 5.0)
+        assert found.complete and [p.osm_id for p in found.places] == ["node/11", "way/22"]
+        assert found.places[1].lat == 40.9871 and found.places[0].kinds == ("shop:supermarket",)
+        q = urllib.parse.parse_qs(urllib.parse.urlparse(http.urls[0]).query)["data"][0]
+        assert q.startswith("[out:json]") and q.endswith("out center tags;")
+        assert 'nwr["shop"="grocery"](around:5250,41.002,-87.001);' in q and '"shop"="supermarket"' in q
+        assert "41.002345" not in http.urls[0]
+        routes = prov.routes(origin, found.places)
+        assert routes == [G.Route(1900.0, 240.0), G.Route(2600.0, 330.0)]
+        assert "/table/v1/driving/-87.001,41.002;" in http.urls[1] and "sources=0" in http.urls[1]
+        # cached: no second request
+        prov.nearby(("shop:supermarket", "shop:grocery"), origin, 5.0)
+        prov.routes(origin, found.places)
+        assert len(http.urls) == 2
+        assert [s[0] for s in prov.sent] == ["nearby", "table"] and prov.sent[0][1] == "shop:grocery,shop:supermarket"
+        # an Overpass remark (a server timeout) is an incomplete list: an error, never cached
+        bad = OverpassHTTP(remark="runtime error: Query timed out in \"query\" at line 1 after 26 seconds.")
+        prov2 = G.OSMProvider(os.path.join(tmp, "other-cache.json"), http_get=bad, clock=Clock(), sleep=lambda s: None,
+                              rate_path=os.path.join(tmp, "osm-rate.json"), retries=0)
+        try:
+            prov2.nearby(("shop:supermarket",), origin, 5.0)
+            raise AssertionError("no error")
+        except G.ProviderError as e:
+            assert "incomplete" in str(e)
+        assert not os.path.exists(os.path.join(tmp, "other-cache.json"))
+        try:
+            prov.nearby(('shop"];out;', ), origin, 5.0)  # never anything but an OSM key:value in the query
+            raise AssertionError("no error")
+        except G.ProviderError:
+            pass
+        assert G.OSMProvider.coverage_verified is False
+
+
+def test_the_end_to_end_type_plan_runs_on_the_osm_client():
+    with tempfile.TemporaryDirectory() as tmp:
+        http = OverpassHTTP()
+        prov = G.OSMProvider(os.path.join(tmp, "geo-cache.json"), http_get=http, clock=Clock(), sleep=lambda s: None,
+                             rate_path=os.path.join(tmp, "osm-rate.json"))
+        origin = (41.0, -87.0)
+        assert G.plan("Is there a grocery store nearby?", "cedar-1a", origin, prov, reservation=OK,
+                      scope=SCOPE).reason == "unverified_type"
+        assert http.urls == []
+        rec = G.coverage_record("grocery", "node/11", "Corner Market", "checked", "2026-11-01T07:00:00+00:00")
+        p = G.plan("Is there a grocery store nearby?", "cedar-1a", origin, prov, reservation=OK, scope=SCOPE,
+                   overrides={G.coverage_key("cedar-1a", "grocery"): rec})
+        assert p.verdict == "answer" and p.text == \
+            "Hi! The nearest grocery store, Corner Market, is about 1 mile away, roughly 4 minutes by car without traffic."
+        assert [s[0] for s in p.sent] == ["nearby", "table"]

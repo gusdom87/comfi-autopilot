@@ -18,7 +18,7 @@ of barred types (a hospital, a fuel station).
 import math
 from dataclasses import dataclass
 
-from .geo_answers import Place, Route, haversine_m
+from .geo_answers import Nearby, Place, Route, haversine_m
 
 # Synthetic origin: the four Cedar Hollow single units share one building.
 ORIGIN = (41.0, -87.0)
@@ -99,8 +99,16 @@ def _tokens(text):
 
 class FixtureProvider:
     """Offline stand-in for the map services, same interface as OSMProvider.
-    Records every query it is sent (the privacy tests read `sent`)."""
+    Records every query it is sent (the privacy tests read `sent`).
+
+    `search` answers like a geocoder (decoys, importance order, a result
+    cap); `nearby` answers like a radius list: every place of the kinds
+    asked for within the radius, nothing cut off. This map is an invented
+    world, complete by construction, so `coverage_verified` is True: a
+    nearest-of-type answer here needs no operator coverage record (the
+    real map's provider says False)."""
     name = "fixture"
+    coverage_verified = True
 
     def __init__(self, places=None, routes=None, fail_routes=()):
         self.places = dict(PLACES if places is None else places)
@@ -119,6 +127,16 @@ class FixtureProvider:
         # a geocoder's own order: by its importance, not by distance
         hits.sort(key=lambda p: (-p.importance, p.osm_id))
         return hits[:limit]
+
+    def nearby(self, kinds, near, radius_km, cuisine=()):
+        self.sent.append(("nearby", ",".join(sorted(set(kinds))), float(radius_km)))
+        want = set(kinds)
+        hits = [p for p in self.places.values()
+                if set(p.kinds) & want and haversine_m(near, (p.lat, p.lon)) <= radius_km * 1000.0]
+        return Nearby(tuple(sorted(hits, key=lambda p: p.osm_id)), True, "fixture")  # any order: the engine sorts
+
+    def routes(self, origin, dests):
+        return [self.route(origin, d) for d in dests]
 
     def route(self, origin, dest):
         self.sent.append(("route", tuple(origin), (dest.lat, dest.lon)))

@@ -149,13 +149,17 @@ def test_set_g_zero_wrong_zero_trap():
 def test_set_g_only_the_destination_leaves():
     """Privacy: each search the provider was sent carries the parsed
     destination phrase or a type's fixed search words, nothing else from
-    the message; routes carry coordinates only."""
+    the message; a radius list carries a type's fixed OSM tags and a
+    radius; routes carry coordinates only."""
     type_queries = {spec.query for _, spec in G.TYPES}
+    type_tags = {",".join(sorted(set(spec.kinds))) for _, spec in G.TYPES}
     for r, p, g, sent in run_geo(load("set_g.jsonl")):
         for s in sent:
             if s[0] == "search":
                 assert s[1] == p.dest or s[1] in type_queries, (r["id"], s)
                 assert len(s[1].split()) <= 6
+            elif s[0] == "nearby":
+                assert s[1] in type_tags and isinstance(s[2], float) and len(s) == 3, (r["id"], s)
             else:
                 assert s[0] == "route" and all(isinstance(x, float) for x in s[1] + s[2])
 
