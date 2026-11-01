@@ -43,6 +43,23 @@ a coffee maker?") from the property's own Knowledge Hub, word for word.
              every specific item the guest asked about. Absent: HOLD. Two
              sources disagree: HOLD. Agree: the statement whose every claim
              the other source also makes is the one sent.
+  situation  (Nov 1, 2026) every statement is about the STAY or about
+             DEPARTURE: a checkout fact (the pinned library's checkout
+             steps, "leave all trash in the indoor trash bins") by its
+             declared role, and any statement whose own words are a
+             departure instruction ("Before leaving, please take all trash
+             out to ..."). Hub questions are about the stay (checkout words
+             are barred, and a question about leaving holds), so they are
+             answered and compared on stay statements only: a departure
+             instruction is a different situation, never the answer and
+             never a veto, with one exception kept on purpose: a departure
+             instruction that names a place, where none of its places is a
+             place the answer names, still holds the answer (two sources
+             that put the bins in different places disagree whatever the
+             situation). Two stay sources that disagree hold exactly as
+             before. The real case: the 1S guest asking for the outdoor bin
+             mid-stay was held because the Hub's own departure checklist
+             was compared word for word with its in-stay statement.
 
 Every no is a HOLD: no hub answer goes, and the message follows the
 actuator's existing path (the acknowledgment, or a hold for a person).
@@ -61,7 +78,7 @@ except ImportError:  # pragma: no cover
     guarded_class = None
 
 CATEGORY = "hub_qa"
-SNAPSHOT_SCHEMA = "comfi-autopilot/hub-sources/v1"
+SNAPSHOT_SCHEMA = "comfi-autopilot/hub-sources/v2"   # v2 (Nov 1, 2026): every statement carries its situation
 FACT_TTL = timedelta(days=7)
 MAX_MESSAGE_CHARS = 500
 MAX_ANSWER_CHARS = 400
@@ -380,6 +397,38 @@ def _is_critical(word):
     return word in CRITICAL or word.startswith("#")
 
 
+# ---------- situation: the stay or departure ----------
+
+STAY, DEPARTURE = "stay", "departure"
+# A fact the pinned library sends as checkout steps is a departure
+# instruction by its role, whatever its words.
+DEPARTURE_FACT_RE = re.compile(r"^checkout")
+# A statement whose own words are a departure instruction (read folded).
+# "rather than leaving it in the unit" alone is not one: leaving needs a
+# when ("before leaving", "when you leave").
+DEPARTURE_STATEMENT = re.compile(
+    r"\b(?:before|when|upon|on|after|prior\s+to|as)\s+(?:you\s+|we\s+|guests\s+|your\s+)?(?:leav(?:e|ing)"
+    r"|depart(?:ing|ure)?|check(?:ing)?[\s-]?out|go(?:ing)?\s+home|exit(?:ing)?)\b"
+    r"|\b(?:check[\s-]?out|checkout|departure|departing)\b|\bend\s+of\s+(?:your|the)\s+stay\b|\blast\s+day\b"
+    r"|\bon\s+your\s+way\s+out\b")
+# A question about leaving: the pinned library owns checkout steps, and
+# the hub's stay statements may not answer it ("where do we leave the
+# trash?" can mean at checkout, where the instruction differs).
+DEPARTURE_QUESTION = re.compile(
+    r"\b(?:leav(?:e|es|ing)|depart\w*|departure|go(?:ing)?\s+home|head(?:ing)?\s+(?:out|home)|move\s+out"
+    r"|on\s+(?:our|the|my)\s+way\s+out|last\s+(?:day|morning|night)|end\s+of\s+(?:our|the|my)\s+stay"
+    r"|(?:when|before|after|once)\s+we(?:'re|\s+are)?\s+(?:go|gone|done|out))\b")
+# The place words a departure instruction is compared on (anchor forms:
+# plurals folded, "shelves" -> "shelve").
+PLACE_WORDS = frozenset("""alley alleyway curb curbside garage driveway street sidewalk yard backyard porch patio deck
+dumpster basement closet hallway hall kitchen bathroom bedroom counter drawer cabinet shelf shelve pantry sink tub
+bathtub fridge""".split())
+
+
+def statement_scope(text, forced=None):
+    return forced or (DEPARTURE if DEPARTURE_STATEMENT.search(T.fold(text)) else STAY)
+
+
 def statement_intents(text):
     f = T.fold(text)
     return [i.id for i in INTENTS if all(rx.search(f) for rx in i.require)]
@@ -391,6 +440,7 @@ class Statement:
     intents: tuple
     anchors: tuple      # sorted claim words (no digits for barred text: markers only)
     barred: tuple = ()  # why it can never be rendered
+    scope: str = STAY   # STAY or DEPARTURE (read on the full text, barred ones included)
 
 
 @dataclass(frozen=True)
@@ -405,7 +455,7 @@ class Source:
         return [s for s in self.statements if s.text is not None]
 
 
-def _statements_from_text(raw, heading_barred):
+def _statements_from_text(raw, heading_barred, scope=None):
     out = []
     passage_barred = heading_barred
     prev = None  # the last statement in this passage: (index in out) or "dropped"
@@ -440,12 +490,13 @@ def _statements_from_text(raw, heading_barred):
     stmts = []
     for kind, text, why in out:
         a = anchors(text)
+        sc = statement_scope(text, scope)
         if kind == "ok":
-            stmts.append(Statement(text, tuple(statement_intents(text)), tuple(sorted(a))))
+            stmts.append(Statement(text, tuple(statement_intents(text)), tuple(sorted(a)), (), sc))
         else:  # evidence only: no text kept, numbers reduced to markers
             stmts.append(Statement(None, tuple(statement_intents(text)),
                                    tuple(sorted(w for w in a if not w.startswith("#"))) + ("#",) * any(
-                                       w.startswith("#") for w in a), tuple(why)))
+                                       w.startswith("#") for w in a), tuple(why), sc))
     return tuple(stmts)
 
 
@@ -483,15 +534,16 @@ class SourceSet:
                 "skipped": [list(s) for s in self.skipped],
                 "sources": [{"id": s.id, "kind": s.kind, "label": s.label, "sha256": s.sha256,
                              "statements": [{"text": st.text, "intents": list(st.intents),
-                                             "anchors": list(st.anchors), "barred": list(st.barred)}
+                                             "anchors": list(st.anchors), "barred": list(st.barred),
+                                             "scope": st.scope}
                                             for st in s.statements]} for s in self.sources]}
 
 
 def _digest(property_id, sources):
     body = json.dumps([[s.id, s.kind, s.label, s.sha256, [[st.text, list(st.intents), list(st.anchors),
-                                                          list(st.barred)] for st in s.statements]]
+                                                          list(st.barred), st.scope] for st in s.statements]]
                        for s in sources], sort_keys=True)
-    return sha256(f"hub-sources/v1:{property_id}:{body}")
+    return sha256(f"hub-sources/v2:{property_id}:{body}")
 
 
 def build_source_set(property_id, hub_items, facts, now):
@@ -513,9 +565,15 @@ def build_source_set(property_id, hub_items, facts, now):
         if why:
             skipped.append((f"fact {key}", why))
             continue
-        stmts = _statements_from_text(fact["value"], False)
+        stmts = _statements_from_text(fact["value"], False, DEPARTURE if DEPARTURE_FACT_RE.match(key) else None)
         sources.append(Source(f"fact:{key}", "fact", key, sha256(fact["value"]), stmts))
     return SourceSet(property_id, tuple(sources), tuple(skipped), _digest(property_id, sources))
+
+
+def _scope_of(st):
+    if st.get("scope") not in (STAY, DEPARTURE):
+        raise ValueError("a hub statement without a situation")
+    return st["scope"]
 
 
 def source_set_from_dict(doc):
@@ -525,7 +583,7 @@ def source_set_from_dict(doc):
         raise ValueError("not a hub source snapshot")
     sources = tuple(Source(s["id"], s["kind"], s["label"], s["sha256"],
                            tuple(Statement(st["text"], tuple(st["intents"]), tuple(st["anchors"]),
-                                           tuple(st.get("barred") or ())) for st in s["statements"]))
+                                           tuple(st.get("barred") or ()), _scope_of(st)) for st in s["statements"]))
                     for s in doc.get("sources") or [])
     d = _digest(doc["property_id"], sources)
     if d != doc.get("digest"):
@@ -584,6 +642,10 @@ def classify(message):
             m = rx.search(text)
             if m:
                 return None, (), ("barred", f"{name}: {m.group(0)!r}")
+    d = DEPARTURE_QUESTION.search(text)
+    if d:
+        return None, (), ("departure", f"a question about leaving ({d.group(0)!r}): the pinned library owns "
+                                       "checkout steps")
     # The barred checks above read the whole message; everything below
     # reads it with the host's name after the opening greeting and the one
     # closed full-indoor-bin clause blanked out.
@@ -630,15 +692,28 @@ def _consistent(a, b):
     return not any(_is_critical(w) for w in big - small)
 
 
+def _places(statements):
+    return set().union(*[set(st.anchors) for st in statements]) & PLACE_WORDS
+
+
 def answer_for(intent, items, source_set):
-    """The answer from the source set for a classified question, or a hold."""
-    by_source = []
+    """The answer from the source set for a classified question (always
+    about the stay), or a hold. Stay statements answer and are compared as
+    before; departure instructions only hold an answer whose places they
+    share none of."""
+    by_source, departing = [], []
     for src in source_set.sources:
         ev = [st for st in src.statements if intent.id in st.intents]
-        if ev:
-            by_source.append((src, ev))
+        stay = [st for st in ev if st.scope != DEPARTURE]
+        if stay:
+            by_source.append((src, stay))
+        if len(stay) < len(ev):
+            departing.append((src, [st for st in ev if st.scope == DEPARTURE]))
     if not by_source:
-        return _hold("missing", f"no source states {intent.id}", intent=intent.id, topic=intent.topic, items=items)
+        why = f"no source states {intent.id} for the stay"
+        if departing:
+            why += f" ({len(departing)} departure instruction(s) do; they never answer a question about the stay)"
+        return _hold("missing", why, intent=intent.id, topic=intent.topic, items=items)
     renderable = [(src, [st for st in ev if st.text is not None]) for src, ev in by_source]
     renderable = [(src, ev) for src, ev in renderable if ev]
     if not renderable:
@@ -655,6 +730,14 @@ def answer_for(intent, items, source_set):
                              source_ids=(claims[i][0], claims[j][0]))
     # Agreeing sources: send the one whose claims every other source makes.
     src, ev = min(renderable, key=lambda p: (len(set().union(*[set(st.anchors) for st in p[1]])), p[0].id))
+    # A departure instruction that puts it somewhere else entirely still holds.
+    here = _places(ev)
+    for dsrc, dev in departing:
+        there = _places(dev)
+        if here and there and not here & there:
+            return _hold("conflict", f"{src.id} and the departure instruction {dsrc.id} name different places for "
+                         f"{intent.id}", intent=intent.id, topic=intent.topic, items=items,
+                         source_ids=(src.id, dsrc.id))
     statement = " ".join(st.text for st in ev)
     folded = T.fold(statement)
     missing = [it[0] for it in intent.items if it[0] in items and not it[-1].search(folded)]

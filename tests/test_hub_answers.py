@@ -299,3 +299,132 @@ def test_engines_make_no_model_call():
         mods |= {n.module or "" for n in ast.walk(tree) if isinstance(n, ast.ImportFrom)}
         assert not {m for m in mods if any(k in m for k in ("client", "baseten", "openai", "anthropic", "prompts"))}, \
             (name, mods)
+
+
+# ---------- situation: a departure instruction is not an in-stay fact (Nov 1, 2026) ----------
+# The real failure, in invented words: the guest at a listing asks mid-stay
+# for the outdoor bin; the Hub holds an in-stay line in its checkout list
+# ("Take all trash ... out to the outdoor bins by the garage"), a departure
+# item ("Before leaving, please take all trash ... out to the outdoor bins
+# on the other driveway by the garage, rather than leaving it in the
+# unit"), and the pinned checkout steps say "leave all trash in the indoor
+# trash bins". The engine compared all three word for word and held.
+
+STAY_LINE = "Take all trash and recycling out to the outdoor bins by the two-car garage."
+DEPART_ITEM = ("Before leaving, please take all trash and recycling out to the outdoor bins located on the far "
+               "driveway by the two-car garage, rather than leaving it in the unit.")
+CHECKOUT_TRASH = "Trash: Please leave all trash in the indoor trash bins."
+SITUATION_MD = f"""# Juniper Flat (staged)
+
+## Check-out Policies
+- [edited] Standard check-out time is 11:00 AM.
+
+Before leaving, please:
+• Place used towels in the bathtub.
+• {STAY_LINE}
+
+## Trash & Recycling
+- [edited] {DEPART_ITEM}
+"""
+
+
+def _juniper(md=SITUATION_MD, checkout=CHECKOUT_TRASH):
+    facts = {"checkout_tasks": F._fact("checkout_tasks", checkout)} if checkout else {}
+    return H.build_source_set("juniper-flat", H.parse_hub_markdown(md), facts, F.FIXTURE_NOW)
+
+
+def _jask(msg, **kw):
+    return H.plan(msg, "juniper-flat", _juniper(**kw), reservation=F.ACCEPTED)
+
+
+def test_statements_carry_their_situation():
+    s = _juniper()
+    scope = {st.text: st.scope for src in s.sources for st in src.statements if st.text}
+    assert scope[STAY_LINE] == H.STAY and scope[DEPART_ITEM] == H.DEPARTURE
+    assert scope[CHECKOUT_TRASH] == H.DEPARTURE          # a checkout fact, by its role
+    assert H.statement_scope("Standard check-out time is 11:00 AM.") == H.DEPARTURE   # barred: evidence only
+    assert all(st.scope == H.DEPARTURE for src in s.sources if src.label == "Trash & Recycling"
+               for st in src.statements)
+    for text in ("Trash goes in the gray bins by the garage.", "Leave the bins by the garage.",
+                 "Please do not leave trash on the porch, rather than leaving it out."):
+        assert H.statement_scope(text) == H.STAY, text
+    for text in ("Before you leave, take the trash out.", "When departing, set the thermostat to 68.",
+                 "At the end of your stay, please strip the beds.", "Upon checkout, leave the key inside."):
+        assert H.statement_scope(text) == H.DEPARTURE, text
+    # the situation is in the snapshot, and in its digest: a v1 snapshot (none) is refused
+    d = s.to_dict()
+    assert d["schema"] == "comfi-autopilot/hub-sources/v2"
+    assert H.source_set_from_dict(json.loads(json.dumps(d))).digest == s.digest
+    tampered = json.loads(json.dumps(d))
+    for src in tampered["sources"]:
+        for st in src["statements"]:
+            st["scope"] = H.STAY
+    try:
+        H.source_set_from_dict(tampered)
+        raise AssertionError("a changed situation was accepted")
+    except ValueError:
+        pass
+    old = json.loads(json.dumps(d))
+    old["schema"] = "comfi-autopilot/hub-sources/v1"
+    for src in old["sources"]:
+        for st in src["statements"]:
+            st.pop("scope")
+    for doc in (old, dict(old, schema=H.SNAPSHOT_SCHEMA)):
+        try:
+            H.source_set_from_dict(doc)
+            raise AssertionError("a snapshot without situations was accepted")
+        except ValueError:
+            pass
+
+
+def test_a_checkout_instruction_does_not_veto_the_in_stay_answer():
+    """The real 1S question's shape, verbatim greeting included."""
+    for msg in ("Hi Gus, " + F.FULL_BIN_QUESTION, F.FULL_BIN_QUESTION, "Where are the outdoor trash bins?",
+                "Where does the trash go?", "Is there an outdoor garbage bin?"):
+        p = _jask(msg)
+        assert (p.verdict, p.text) == ("answer", "Hi! " + STAY_LINE), (msg, p.reason, p.detail)
+    # the departure item and the checkout fact are never the text sent
+    p = _jask("Where does the trash go?")
+    assert p.source_ids == (_juniper().sources[0].id,)
+
+
+def test_conflicting_facts_about_the_same_situation_still_hold():
+    # two in-stay statements that disagree: hold, exactly as before
+    md = SITUATION_MD + "\n## Outdoor Bins\n- [edited] The outdoor trash bins are in the alley behind the house.\n"
+    p = _jask("Hi Gus, " + F.FULL_BIN_QUESTION, md=md)
+    assert p.verdict == "hold" and p.reason == "conflict"
+    # an in-stay statement that disagrees with a confirmed fact about the stay: hold
+    sset = H.build_source_set("juniper-flat", H.parse_hub_markdown(SITUATION_MD), {
+        "checkout_tasks": F._fact("checkout_tasks", CHECKOUT_TRASH),
+        "trash_location": F._fact("trash_location", "The outdoor trash bins are at the curb in front of the house.")},
+        F.FIXTURE_NOW)
+    p = H.plan("Where are the outdoor trash bins?", "juniper-flat", sset, reservation=F.ACCEPTED)
+    assert p.verdict == "hold" and p.reason == "conflict"
+    # a departure instruction that puts the bins somewhere else entirely: hold
+    md = SITUATION_MD.replace("located on the far driveway by the two-car garage", "in the alley behind the building")
+    p = _jask("Where are the outdoor trash bins?", md=md)
+    assert p.verdict == "hold" and p.reason == "conflict" and "departure instruction" in p.detail
+    # a departure instruction that shares a place with the answer (more detail, same garage): no veto
+    assert _jask("Where are the outdoor trash bins?").verdict == "answer"
+
+
+def test_departure_instructions_never_answer_a_question_about_the_stay():
+    # only the checkout fact (indoor bins) and the departure item: nothing about the stay
+    md = SITUATION_MD.replace(f"• {STAY_LINE}\n", "")
+    for msg in ("Hi Gus, " + F.FULL_BIN_QUESTION, "Where does the trash go?", "Where are the outdoor trash bins?"):
+        p = _jask(msg, md=md)
+        assert p.verdict == "hold" and p.reason == "missing" and "departure instruction" in p.detail, (msg, p)
+    p = _jask("Where does the trash go?", md="# Empty\n")
+    assert p.verdict == "hold" and p.reason == "missing"   # the checkout fact alone is never a stay answer
+
+
+def test_a_question_about_leaving_holds():
+    for msg in ("Where do we put the trash when we leave?", "Where do I leave the trash?",
+                "Before we go, where does the trash go?", "Where should the trash go on our way out?",
+                "Where does the trash go on our last day?", "Where do we take the trash before leaving?",
+                "Hi Gus, where does the trash go when we're done?"):
+        p = _jask(msg)
+        assert p.verdict == "hold" and p.reason in ("departure", "barred"), (msg, p.reason, p.text)
+    assert _jask("Where do I leave the trash?").reason == "departure"
+    # "left" (a side) is not leaving
+    assert H.DEPARTURE_QUESTION.search("is the laundry room on the left?") is None
