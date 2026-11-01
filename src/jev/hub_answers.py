@@ -182,7 +182,9 @@ _PRESENCE = r"\b(?:has|have|there\s+is|there's|comes\s+with|includes?|provides?|
 
 
 def _phrases(*words):
-    return re.compile(r"\b(?:" + "|".join(sorted(words, key=len, reverse=True)) + r")\b")
+    # (?!') : a phrase never matches the front of a contraction ("where" in
+    # "where's"), which would leave a stray "s" behind as content
+    return re.compile(r"\b(?:" + "|".join(sorted(words, key=len, reverse=True)) + r")\b(?!')")
 
 
 _WHERE_WORDS = ("where", "kept", "keep", "find", "located", "stored", "there", "here", "the unit", "the studio",

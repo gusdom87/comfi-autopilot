@@ -200,7 +200,7 @@ GEO_COVER = re.compile(r"\b(?:" + "|".join(sorted((
     "minute", "by car", "car", "is there", "are there", "located", "the house", "the unit", "the place",
     "the apartment", "the studio", "the property", "the building", "the airbnb", "the rental", "how many",
     "from where we're staying", "from where we are staying", "staying", "over", "of a"),
-    key=len, reverse=True)) + r")\b")
+    key=len, reverse=True)) + r")\b(?!')")
 
 
 @dataclass(frozen=True)
