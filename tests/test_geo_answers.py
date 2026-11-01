@@ -223,6 +223,26 @@ def test_osm_client_errors_become_provider_errors_and_bad_routes_none():
         assert prov2.route((41.0, -87.0), G.Place("x", 41.1, -87.1)) is None
 
 
+def test_osm_client_retries_one_transient_failure_with_the_same_spacing():
+    with tempfile.TemporaryDirectory() as tmp:
+        real, calls = FakeHTTP(), []
+
+        def flaky(url):
+            calls.append(url)
+            if len(calls) == 1:
+                raise OSError("IncompleteRead")
+            return real(url)
+        prov, clock = _osm(tmp, flaky)
+        assert prov.search("sakura garden", (41.0, -87.0), 80.0)[0].name == "Sakura Garden"
+        assert len(calls) == 2 and clock.slept == [1.0]  # the retry waited out the 1 req/s spacing
+        prov2, _ = _osm(tmp, lambda url: (_ for _ in ()).throw(OSError("down")))
+        try:
+            prov2.route((41.0, -87.0), G.Place("x", 41.1, -87.1))
+            raise AssertionError("no error")
+        except G.ProviderError:
+            pass
+
+
 def test_cache_write_rides_out_eperm():
     with tempfile.TemporaryDirectory() as tmp:
         path = os.path.join(tmp, "c.json")

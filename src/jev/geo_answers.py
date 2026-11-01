@@ -318,7 +318,7 @@ class OSMProvider:
 
     def __init__(self, cache_path, nominatim="https://nominatim.openstreetmap.org",
                  osrm="https://router.project-osrm.org", min_interval=1.0, ttl=timedelta(days=30),
-                 http_get=None, clock=time.monotonic, sleep=time.sleep, now=None, timeout=10):
+                 http_get=None, clock=time.monotonic, sleep=time.sleep, now=None, timeout=10, retries=1):
         self.cache_path = cache_path
         self.nominatim = nominatim.rstrip("/")
         self.osrm = osrm.rstrip("/")
@@ -328,6 +328,7 @@ class OSMProvider:
         self.clock, self.sleep = clock, sleep
         self.now = now or (lambda: datetime.now(timezone.utc))
         self.timeout = timeout
+        self.retries = int(retries)
         self._last = None
         self.sent = []
 
@@ -363,15 +364,22 @@ class OSMProvider:
             return json.loads(resp.read().decode("utf-8"))
 
     def _get(self, url):
-        if self._last is not None:
-            wait = self.min_interval - (self.clock() - self._last)
-            if wait > 0:
-                self.sleep(wait)
-        self._last = self.clock()
-        try:
-            return self.http_get(url)
-        except Exception as e:  # network, HTTP error, bad JSON: the caller holds
-            raise ProviderError(f"{type(e).__name__}: {e}"[:200]) from None
+        """One GET, spaced at least min_interval after the previous one. A
+        transient failure (this VM's egress proxy drops connections at
+        random) is retried `retries` times, each retry spaced the same way;
+        then the caller holds."""
+        last = None
+        for _ in range(1 + max(0, self.retries)):
+            if self._last is not None:
+                wait = self.min_interval - (self.clock() - self._last)
+                if wait > 0:
+                    self.sleep(wait)
+            self._last = self.clock()
+            try:
+                return self.http_get(url)
+            except Exception as e:  # network, HTTP error, bad JSON
+                last = e
+        raise ProviderError(f"{type(last).__name__}: {last}"[:200]) from None
 
     def search(self, query, near, radius_km, limit=10):
         lat, lon = round(near[0], 1), round(near[1], 1)
