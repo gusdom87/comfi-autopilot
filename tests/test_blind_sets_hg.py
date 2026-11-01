@@ -5,7 +5,7 @@ calls: they never saw the engines, the fixtures' code, or these tests.
 They were given only the fact space in plain words (set H, H2) or the
 place list (set G) and a class mix, and labeled every row themselves.
 Set H and G arrived before the hub engine was finished (the geo engine
-was already written); both engines were frozen in commit 1240bf6 before
+was already written); both engines were frozen in commit f1c9327 before
 either set ran. Set H2 was commissioned after that freeze and run once.
 
 The bar (the brief, Oct 31, 2026): ZERO wrong answers and ZERO trap
