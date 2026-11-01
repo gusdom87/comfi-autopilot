@@ -187,6 +187,56 @@ def test_appends_ride_out_eperm():
         assert oct(os.stat(os.path.join(tmp, R.LEDGER_FILE)).st_mode & 0o777) == "0o600"
 
 
+CORRUPT_LINES = (
+    "{not json",
+    "[1, 2]",
+    '"a string"',
+    "17",
+    '{"no_event": true}',
+    '{"event": "send", "category": "hub_qa", "source": {"flag_ids": ["x"]}}',                 # no send_id
+    '{"event": "send", "send_id": "s9", "category": "hub_qa", "source": "not a dict"}',
+    '{"event": "send", "send_id": "s9", "category": "hub_qa", "source": {"flag_ids": 5}}',
+    '{"event": "send", "send_id": ["s9"], "category": "hub_qa", "source": {"flag_ids": ["x"]}}',
+    '{"event": "rating", "send_id": "s1", "score": "8"}',
+    '{"event": "rating", "send_id": "s1", "score": true}',
+    '{"event": "rating", "send_id": "s1"}',
+    '{"event": "clear_pause"}',
+    '{"event": "reapprove", "category": 3}',
+    '{"event": "correction", "flag_id": ["x"]}',
+)
+
+
+def test_a_malformed_ledger_line_is_a_ratings_error_on_every_read():
+    """Audit R1 (Nov 1, 2026): every malformed line, JSON or not, is refused
+    as RatingsError (never a KeyError or TypeError out of state()), so a
+    caller that catches RatingsError catches every corrupt ledger."""
+    for bad in CORRUPT_LINES:
+        with tempfile.TemporaryDirectory() as tmp:
+            led = _led(tmp)
+            _send(led, "s1")
+            with open(led.path, "a", encoding="utf-8") as fh:
+                fh.write(bad + "\n")
+            for read in (led.rows, led.state, led.report, lambda: led.rights("hub_qa", ["x"])):
+                try:
+                    read()
+                    raise AssertionError(f"read accepted {bad!r}")
+                except R.RatingsError as e:
+                    assert ":2: " in str(e), (bad, e)
+            out = []
+            assert R.main(["--dir", tmp, "report"], out=out.append) == 2 and out[0].startswith("refused"), bad
+    with tempfile.TemporaryDirectory() as tmp:  # a clean ledger still reads
+        led = _led(tmp)
+        _send(led, "s1")
+        led.rate("s1", 9)
+        assert led.rights("hub_qa") == (R.SEND, None)
+        for bad_id in (7, None, ""):
+            try:
+                led.record_send(bad_id, "hub_qa", "cedar-1a", "q", "a", {"flag_ids": ["x"]})
+                raise AssertionError(f"send id {bad_id!r} accepted")
+            except R.RatingsError:
+                pass
+
+
 def test_flag_ids_name_each_piece_a_correction_would_repin():
     assert R.flag_ids_for("ack", "cedar-1a", template_sha256="ab" * 32) == ["template:ack:" + "ab" * 8]
     assert R.flag_ids_for("wifi", "cedar-1a", template_id="tpl-wifi", facts=("wifi_password",)) == [

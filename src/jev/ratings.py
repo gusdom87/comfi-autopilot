@@ -78,6 +78,36 @@ class RatingsError(ValueError):
     pass
 
 
+# The fields state() reads from each event, by type (audit R1, Nov 1, 2026):
+# a row missing one, or holding the wrong type, is a malformed line, refused
+# as RatingsError like a line that is not JSON, never a stray KeyError.
+_ROW_FIELDS = {
+    "send": {"send_id": str, "category": str, "source": dict},
+    "rating": {"send_id": str, "score": int},
+    "clear_pause": {"category": str},
+    "reapprove": {"category": str},
+    "demote": {"category": str},
+}
+
+
+def _row_problem(row):
+    if not isinstance(row, dict):
+        return "not a JSON object"
+    if not isinstance(row.get("event"), str):
+        return "no event name"
+    for key, kind in _ROW_FIELDS.get(row["event"], {}).items():
+        v = row.get(key)
+        if not isinstance(v, kind) or isinstance(v, bool):
+            return f"{row['event']} row: {key} is not a {kind.__name__}"
+    if row["event"] == "send":
+        flags = row["source"].get("flag_ids")
+        if flags is not None and not (isinstance(flags, list) and all(isinstance(f, str) for f in flags)):
+            return "send row: source.flag_ids is not a list of strings"
+    if row["event"] in ("correction", "dismiss_flag") and not isinstance(row.get("flag_id"), (str, type(None))):
+        return f"{row['event']} row: flag_id is not a string"
+    return None
+
+
 class Ledger:
     """One data dir: ratings.jsonl (every event), ratings-review.jsonl (the
     review list), gold-candidates.jsonl (candidates only)."""
@@ -119,6 +149,9 @@ class Ledger:
                 row = json.loads(raw)
             except json.JSONDecodeError as e:
                 raise RatingsError(f"{self.path}:{n}: not a JSON line ({e})") from None
+            problem = _row_problem(row)
+            if problem:
+                raise RatingsError(f"{self.path}:{n}: malformed row ({problem})")
             row["_seq"] = n
             out.append(row)
         return out
@@ -132,12 +165,12 @@ class Ledger:
         """The rating slot for one autonomous send. `source` names the exact
         text or fact behind it and carries `flag_ids`, the keys a bad rating
         flags. Idempotent per send_id: a second slot is refused."""
-        if not send_id or not category:
+        if not send_id or not category or not isinstance(send_id, str) or not isinstance(category, str):
             raise RatingsError("a send needs an id and a category")
         if any(r.get("event") == "send" and r.get("send_id") == send_id for r in self.rows()):
             raise RatingsError(f"send {send_id} already has a rating slot")
         flags = list((source or {}).get("flag_ids") or [])
-        if not flags:
+        if not flags or not all(isinstance(f, str) for f in flags):
             raise RatingsError("a send's source must name at least one flag id")
         return self._event("send", send_id=send_id, category=category, property_id=property_id,
                            sent_at=_iso(sent_at) if isinstance(sent_at, datetime) else sent_at,
