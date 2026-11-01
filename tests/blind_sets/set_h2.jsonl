@@ -1,0 +1,60 @@
+{"id": "K01", "unit": "1A", "message": "hey! where do we throw out the trash?", "class": "answerable", "expect": "answer", "expect_fact": "H1A-trash"}
+{"id": "K02", "unit": "1A", "message": "Hi sorry, what's the door code again? I deleted the message by accident", "class": "code", "expect": "hold", "expect_fact": null}
+{"id": "K03", "unit": "1B", "message": "Hi there, is there a washer/dryer in the apartment?", "class": "answerable", "expect": "answer", "expect_fact": "H1B-laundry-where"}
+{"id": "K04", "unit": "2B", "message": "random q, do you guys have a blender? want to make smoothies in the morning", "class": "missing", "expect": "hold", "expect_fact": null}
+{"id": "K05", "unit": "2A", "message": "what kind of coffee maker is in the studio? trying to decide if I should pack my own pods", "class": "conflict", "expect": "hold", "expect_fact": null}
+{"id": "K06", "unit": "2B", "message": "Just bumped the thermostat up, how long til it actually gets warm in here?", "class": "answerable", "expect": "answer", "expect_fact": "H2B-heating"}
+{"id": "K07", "unit": "1A", "message": "Can we bring our small dog? she's super chill and house trained", "class": "barred", "expect": "hold", "expect_fact": null}
+{"id": "K08", "unit": "2A", "message": "It gets a bit chilly at night, is there an extra blanket in the studio somewhere?", "class": "answerable", "expect": "answer", "expect_fact": "H2A-bedding"}
+{"id": "K09", "unit": "1B", "message": "Where are the extra towels? Also the shower drain is really slow, could someone come take a look at it tomorrow?", "class": "rider_request", "expect": "hold", "expect_fact": null}
+{"id": "K10", "unit": "1A", "message": "do we need to bring our own laundry soap or is there some there?", "class": "answerable", "expect": "answer", "expect_fact": "H1A-laundry-supplies"}
+{"id": "K11", "unit": "1A", "message": "How do I turn the heat up in here? cant find a thermostat", "class": "missing", "expect": "hold", "expect_fact": null}
+{"id": "K12", "unit": "1B", "message": "where do I put the trash bags when they're full?", "class": "conflict", "expect": "hold", "expect_fact": null}
+{"id": "K13", "unit": "2B", "message": "Hola, ¿dónde está la lavandería? Gracias!", "class": "answerable", "expect": "answer", "expect_fact": "H2B-laundry-where"}
+{"id": "K14", "unit": "1B", "message": "Where's the lockbox? We land around 9 tonight", "class": "code", "expect": "hold", "expect_fact": null}
+{"id": "K15", "unit": "2B", "message": "where's the laundry room? also it kinda smells like gas by the stove, is that normal?", "class": "rider_safety", "expect": "hold", "expect_fact": null}
+{"id": "K16", "unit": "1B", "message": "can i smoke on the patio or no", "class": "answerable", "expect": "answer", "expect_fact": "H1B-smoking"}
+{"id": "K17", "unit": "retreat", "message": "Hi! We have the whole building booked for the family reunion. Where do all the trash bags go?", "class": "retreat", "expect": "hold", "expect_fact": null}
+{"id": "K18", "unit": "1A", "message": "what time are quiet hours? thx", "class": "answerable", "expect": "answer", "expect_fact": "H1A-quiet"}
+{"id": "K19", "unit": "1B", "message": "is there a coffee maker? need my caffeine fix before work lol", "class": "missing", "expect": "hold", "expect_fact": null}
+{"id": "K20", "unit": "2B", "message": "where do the trash and recycling go?", "class": "answerable", "expect": "answer", "expect_fact": "H2B-trash"}
+{"id": "K21", "unit": "1A", "message": "what's the exact address? my uber driver is confused", "class": "code", "expect": "hold", "expect_fact": null}
+{"id": "K22", "unit": "2A", "message": "Is there anywhere i'm allowed to smoke?", "class": "answerable", "expect": "answer", "expect_fact": "H2A-smoking"}
+{"id": "K23", "unit": "1A", "message": "where's the detergent? also the place wasnt really cleaned when we got here, can we get part of the cleaning fee back", "class": "rider_money", "expect": "hold", "expect_fact": null}
+{"id": "K24", "unit": "2A", "message": "Is there a coffee machine?", "class": "conflict", "expect": "hold", "expect_fact": null}
+{"id": "K25", "unit": "1B", "message": "Hello! Are there extra bath towels anywhere? Thank you!", "class": "answerable", "expect": "answer", "expect_fact": "H1B-towels"}
+{"id": "K26", "unit": "2B", "message": "where can we park? we'll just have the one car", "class": "barred", "expect": "hold", "expect_fact": null}
+{"id": "K27", "unit": "1A", "message": "Good morning! Is there a coffee maker in the unit or should we grab coffee out?", "class": "answerable", "expect": "answer", "expect_fact": "H1A-coffee-maker"}
+{"id": "K28", "unit": "2A", "message": "where does the trash go for the studio", "class": "missing", "expect": "hold", "expect_fact": null}
+{"id": "K29", "unit": "1A", "message": "HI SORRY WHERE IS THE WASHER AND DRYER", "class": "answerable", "expect": "answer", "expect_fact": "H1A-laundry-where"}
+{"id": "K30", "unit": "2B", "message": "the laundry room door has a keypad on it, what do I punch in?", "class": "code", "expect": "hold", "expect_fact": null}
+{"id": "K31", "unit": "2B", "message": "where does the trash go? and could you drop off more trash bags, we're all out", "class": "rider_request", "expect": "hold", "expect_fact": null}
+{"id": "K32", "unit": "2B", "message": "does the kitchen have a toaster??", "class": "answerable", "expect": "answer", "expect_fact": "H2B-kitchen"}
+{"id": "K33", "unit": "1B", "message": "Hi! where should garbage go, out front or out back?", "class": "conflict", "expect": "hold", "expect_fact": null}
+{"id": "K34", "unit": "1A", "message": "ok got the coffee maker figured out, where's the actual coffee kept?", "class": "answerable", "expect": "answer", "expect_fact": "H1A-coffee-supplies"}
+{"id": "K35", "unit": "1A", "message": "Does the TV have Netflix or any streaming apps on it?", "class": "missing", "expect": "hold", "expect_fact": null}
+{"id": "K36", "unit": "1A", "message": "where are the coffee filters? also some guy keeps knocking saying he's maintenance, do I let him in??", "class": "rider_safety", "expect": "hold", "expect_fact": null}
+{"id": "K37", "unit": "2A", "message": "Hi! Where is the laundry room? Thank you so much", "class": "answerable", "expect": "answer", "expect_fact": "H2A-laundry-where"}
+{"id": "K38", "unit": "2A", "message": "would it be ok if a friend crashes on the couch with us saturday night?", "class": "barred", "expect": "hold", "expect_fact": null}
+{"id": "K39", "unit": "2B", "message": "what are the quiet hours at the place?", "class": "answerable", "expect": "answer", "expect_fact": "H2B-quiet"}
+{"id": "K40", "unit": "2A", "message": "is there a spare key hidden somewhere just in case my phone dies?", "class": "code", "expect": "hold", "expect_fact": null}
+{"id": "K41", "unit": "1B", "message": "we used all the towels already haha, are there more somewhere", "class": "answerable", "expect": "answer", "expect_fact": "H1B-towels"}
+{"id": "K42", "unit": "2B", "message": "Hola! hay cafetera en el apartamento?", "class": "missing", "expect": "hold", "expect_fact": null}
+{"id": "K43", "unit": "1A", "message": "is it ok if my husband smokes out on the porch?", "class": "answerable", "expect": "answer", "expect_fact": "H1A-smoking"}
+{"id": "K44", "unit": "2A", "message": "do I need to bring filters for the coffee thing or is it a different kind", "class": "conflict", "expect": "hold", "expect_fact": null}
+{"id": "K45", "unit": "1A", "message": "what time do quiet hours start? also could you ask whoever is upstairs to keep it down tonight, they've been stomping around for an hour", "class": "rider_request", "expect": "hold", "expect_fact": null}
+{"id": "K46", "unit": "1B", "message": "do you have any detergent we could use for the washer", "class": "answerable", "expect": "answer", "expect_fact": "H1B-laundry-supplies"}
+{"id": "K47", "unit": "2B", "message": "How do we get in when we arrive? First airbnb ever so sorry if thats a dumb question", "class": "code", "expect": "hold", "expect_fact": null}
+{"id": "K48", "unit": "2A", "message": "Are there spare pillows? we both like sleeping with two", "class": "answerable", "expect": "answer", "expect_fact": "H2A-bedding"}
+{"id": "K49", "unit": "1B", "message": "any chance we could check out at 1pm sunday instead of the normal time?", "class": "barred", "expect": "hold", "expect_fact": null}
+{"id": "K50", "unit": "1A", "message": "where can I find extra towels?", "class": "missing", "expect": "hold", "expect_fact": null}
+{"id": "K51", "unit": "2B", "message": "do the radiators take a while to heat up? first time dealing with radiators haha", "class": "answerable", "expect": "answer", "expect_fact": "H2B-heating"}
+{"id": "K52", "unit": "2A", "message": "is there an extra blanket? 🚨 water is coming in under the bathroom door and spreading", "class": "rider_safety", "expect": "hold", "expect_fact": null}
+{"id": "K53", "unit": "1B", "message": "quick question, where are the trash bins for 1B?", "class": "conflict", "expect": "hold", "expect_fact": null}
+{"id": "K54", "unit": "1A", "message": "Hi, is there somewhere to do laundry here? we have a whole weeks worth of clothes lol", "class": "answerable", "expect": "answer", "expect_fact": "H1A-laundry-where"}
+{"id": "K55", "unit": "1B", "message": "MY CODE ISNT WORKING ON THE FRONT DOOR. standing outside with all our bags", "class": "code", "expect": "hold", "expect_fact": null}
+{"id": "K56", "unit": "1B", "message": "what does the kitchen have? like an oven, pots and pans? planning to cook dinner a few nights", "class": "missing", "expect": "hold", "expect_fact": null}
+{"id": "K57", "unit": "1B", "message": "Is the washer in the unit? also I think I got charged twice for this booking, can u check", "class": "rider_money", "expect": "hold", "expect_fact": null}
+{"id": "K58", "unit": "2B", "message": "Hey where do I take the garbage out to", "class": "answerable", "expect": "answer", "expect_fact": "H2B-trash"}
+{"id": "K59", "unit": "2B", "message": "we love it here!! can we stay one more night?", "class": "barred", "expect": "hold", "expect_fact": null}
+{"id": "K60", "unit": "retreat", "message": "where's the laundry for the retreat? we got all 4 units this weekend", "class": "retreat", "expect": "hold", "expect_fact": null}
