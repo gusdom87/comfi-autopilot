@@ -1,0 +1,40 @@
+{"id": "G01", "message": "How far is Grand Harbor Pier from the house? Want to do a day trip", "class": "named", "reservation": "accepted", "expect": "answer", "expect_place": "p-pier"}
+{"id": "G02", "message": "Is there a pharmacy close by? Need to grab some toothpaste", "class": "type", "reservation": "accepted", "expect": "answer", "expect_place": "p-pharm"}
+{"id": "G03", "message": "How far is Lakeview Park? we want to take the kids", "class": "ambiguous", "reservation": "accepted", "expect": "hold", "expect_place": null}
+{"id": "G04", "message": "how long of a drive is it to Hollow Ridge Zoo?", "class": "named", "reservation": "accepted", "expect": "answer", "expect_place": "p-zoo"}
+{"id": "G05", "message": "How far is Cedar General Hospital from here?", "class": "barred_type", "reservation": "accepted", "expect": "hold", "expect_place": null}
+{"id": "G06", "message": "WHERES THE CLOSEST GROCERY STORE", "class": "type", "reservation": "accepted", "expect": "answer", "expect_place": "p-market"}
+{"id": "G07", "message": "How far are we from Summit Peak Resort? thinking of skiing one day", "class": "far_or_unknown", "reservation": "accepted", "expect": "hold", "expect_place": null}
+{"id": "G08", "message": "We have tickets at Prairie Amphitheater saturday, how long does it take to get there?", "class": "named", "reservation": "accepted", "expect": "answer", "expect_place": "p-amph"}
+{"id": "G09", "message": "how far is Rosa's Taqueria? also it smells kinda like gas in the kitchen", "class": "rider", "reservation": "accepted", "expect": "hold", "expect_place": null}
+{"id": "G10", "message": "Where's the nearest train station?", "class": "type", "reservation": "accepted", "expect": "answer", "expect_place": "p-station"}
+{"id": "G11", "message": "How far is 1427 Maple Ridge Dr from you? My friend lives there", "class": "personal", "reservation": "accepted", "expect": "hold", "expect_place": null}
+{"id": "G12", "message": "Any Japanese restaurants close by? craving ramen", "class": "type", "reservation": "accepted", "expect": "answer", "expect_place": "p-sakura"}
+{"id": "G13", "message": "Hi! Thinking about booking a weekend in June. How far is the place from Grand Harbor Pier?", "class": "inquiry", "reservation": "inquiry", "expect": "hold", "expect_place": null}
+{"id": "G14", "message": "How far is Union Terminal? We're catching a train out of there Monday morning", "class": "named", "reservation": "accepted", "expect": "answer", "expect_place": "p-terminal"}
+{"id": "G15", "message": "how far to the Statue of Liberty lol", "class": "far_or_unknown", "reservation": "accepted", "expect": "hold", "expect_place": null}
+{"id": "G16", "message": "nearest coffee shop?? need caffeine asap", "class": "type", "reservation": "accepted", "expect": "answer", "expect_place": "p-oak"}
+{"id": "G17", "message": "How far is Lincoln Square?", "class": "ambiguous", "reservation": "accepted", "expect": "hold", "expect_place": null}
+{"id": "G18", "message": "How far is Hollow Creek Market? And could you leave a few more rolls of toilet paper, we're almost out", "class": "rider", "reservation": "accepted", "expect": "hold", "expect_place": null}
+{"id": "G19", "message": "how far is Riverside Park? want to go for a run", "class": "named", "reservation": "accepted", "expect": "answer", "expect_place": "p-riverside-a"}
+{"id": "G20", "message": "where's the closest gas station?", "class": "barred_type", "reservation": "accepted", "expect": "hold", "expect_place": null}
+{"id": "G21", "message": "Hola! Hay comida mexicana cerca?", "class": "type", "reservation": "accepted", "expect": "answer", "expect_place": "p-rosa"}
+{"id": "G22", "message": "Is Cedar Hollow Library far? Need to print something", "class": "named", "reservation": "accepted", "expect": "answer", "expect_place": "p-library"}
+{"id": "G23", "message": "How far is Pinecrest Outlet Mall?", "class": "far_or_unknown", "reservation": "accepted", "expect": "hold", "expect_place": null}
+{"id": "G24", "message": "whats the closest pizza place? kids are starving", "class": "type", "reservation": "accepted", "expect": "answer", "expect_place": "p-pizza"}
+{"id": "G25", "message": "How long to drive to Prairie Amphitheater? and do you reimburse for parking there or is that on us", "class": "rider", "reservation": "accepted", "expect": "hold", "expect_place": null}
+{"id": "G26", "message": "how far is Sakura Garden?", "class": "named", "reservation": "accepted", "expect": "answer", "expect_place": "p-sakura"}
+{"id": "G27", "message": "Qué tan lejos está Lakeview Park?", "class": "ambiguous", "reservation": "accepted", "expect": "hold", "expect_place": null}
+{"id": "G28", "message": "Is there a movie theater near here?", "class": "type", "reservation": "accepted", "expect": "answer", "expect_place": "p-cinema"}
+{"id": "G29", "message": "Where's the nearest urgent care? my son has a bad ear ache", "class": "barred_type", "reservation": "accepted", "expect": "hold", "expect_place": null}
+{"id": "G30", "message": "how far is FreshWay Grocery? they have the gluten free stuff I like", "class": "named", "reservation": "accepted", "expect": "answer", "expect_place": "p-freshway"}
+{"id": "G31", "message": "How long would it take to drive to the Grand Canyon from here?", "class": "far_or_unknown", "reservation": "accepted", "expect": "hold", "expect_place": null}
+{"id": "G32", "message": "Whats the closest pizza place? Also someone's been trying our door handle 🚨", "class": "rider", "reservation": "accepted", "expect": "hold", "expect_place": null}
+{"id": "G33", "message": "Hi! Is there a hardware store nearby? need a few hooks for our hammock", "class": "type", "reservation": "accepted", "expect": "answer", "expect_place": "p-hardware"}
+{"id": "G34", "message": "Before I book, is there a grocery store close to the house?", "class": "inquiry", "reservation": "inquiry", "expect": "hold", "expect_place": null}
+{"id": "G35", "message": "Cuánto se tarda en carro a Millbrook Station?", "class": "named", "reservation": "accepted", "expect": "answer", "expect_place": "p-station"}
+{"id": "G36", "message": "Is the Willow Bay Aquarium close to you guys?", "class": "far_or_unknown", "reservation": "accepted", "expect": "hold", "expect_place": null}
+{"id": "G37", "message": "how long would it take to drive to my sister's place in Brookfield?", "class": "personal", "reservation": "accepted", "expect": "hold", "expect_place": null}
+{"id": "G38", "message": "Is Rosa's Taqueria walking distance?", "class": "named", "reservation": "accepted", "expect": "answer", "expect_place": "p-rosa"}
+{"id": "G39", "message": "How far is Starlight Cinema? also could we do a late checkout like 2pm on sunday", "class": "rider", "reservation": "accepted", "expect": "hold", "expect_place": null}
+{"id": "G40", "message": "how long to drive to lincoln square for dinner", "class": "ambiguous", "reservation": "accepted", "expect": "hold", "expect_place": null}
