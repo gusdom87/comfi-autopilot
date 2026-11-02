@@ -1,0 +1,4 @@
+{"at": "2026-10-30T10:00:00+00:00", "event": "disarm", "reason": "operator --disarm"}
+{"at": "2026-10-30T13:00:00+00:00", "event": "arm", "note": "operator's words, fixture"}
+{"at": "2026-10-30T19:30:00+00:00", "event": "auto_disarm", "cycle_id": "c-fixture", "mode": "live", "reason": "deny-list hit on an Act draft: grants late checkout", "trigger": "deny_list", "was_armed": true}
+{"at": "2026-10-30T19:31:00+00:00", "event": "cycle", "outcome": "aborted_deny", "counts": {}}
