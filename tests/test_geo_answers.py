@@ -745,3 +745,128 @@ def test_the_end_to_end_type_plan_runs_on_the_osm_client():
         assert p.verdict == "answer" and p.text == \
             "Hi! The nearest grocery store, Corner Market, is about 1 mile away, roughly 4 minutes by car without traffic."
         assert [s[0] for s in p.sent] == ["nearby", "table"]
+
+
+# ---------- "Where is the nearest Starbucks?": the where-forms and the enriched pin (Gus, Nov 3, 2026) ----------
+
+def _old_render(place_label, route, pinned=False):
+    """render() as it was before a pin could carry an address (2aad20f), verbatim."""
+    if route.distance_m / G.MILE_M < G.WALK_UNDER_MILES:
+        return f"Hi! {place_label} is a short walk, about {G.fmt_minutes(route.distance_m / G.WALK_M_PER_MIN)}."
+    return f"Hi! {place_label} is about {G.fmt_miles(route.distance_m)} away, roughly " \
+           f"{G.fmt_minutes(route.duration_s / 60.0)} by car{'' if pinned else ' without traffic'}."
+
+
+SBUX_ADDRESS = "16527 W 159th St, Lockport, IL"
+SBUX_DIRECTIONS = "Head over via W 151st St and Farrell Rd."
+
+
+def _starbucks_pin(listing="cedar-1a"):
+    body = {"place": "Starbucks", "distance_m": 3380.0, "duration_s": 360.0, "address": SBUX_ADDRESS,
+            "directions": SBUX_DIRECTIONS}
+    ov = dict(body, confirmed_sha256=sha256(json.dumps(body, sort_keys=True)), note="Google Maps, Tue 11 AM")
+    return {G.override_key(listing, "the nearest starbucks"): ov}
+
+
+def test_where_is_and_how_close_parse_as_a_named_place():
+    for s in ("where is the nearest starbucks", "where's the nearest starbucks", "how close is the nearest starbucks"):
+        p = G.parse_question(s)
+        assert p is not None and p.mode == "named" and p.dest == "the nearest starbucks", (s, p)
+    # a real nearest-of-type question is still a type question: the type forms run first
+    p = G.parse_question("where is the nearest grocery store")
+    assert p.mode == "type" and p.type_spec.id == "grocery" and p.dest == "grocery store"
+
+
+def test_a_pin_with_an_address_and_directions_answers_every_wording():
+    pin = _starbucks_pin()
+    for msg in ("Where is the nearest Starbucks?", "Where's the nearest Starbucks?",
+                "How close is the nearest Starbucks?"):
+        prov = RealMap()
+        p = _plan(msg, prov, overrides=pin)
+        assert p.verdict == "answer" and p.override and p.mode == "named" and prov.sent == [], (msg, p)
+        assert p.text == ("Hi! Starbucks is at 16527 W 159th St, Lockport, IL, about 2 miles away, roughly "
+                          "6 minutes by car. Head over via W 151st St and Farrell Rd."), (msg, p.text)
+        assert p.place == {"name": "Starbucks", "address": SBUX_ADDRESS, "directions": SBUX_DIRECTIONS}
+
+
+def test_the_address_and_directions_are_under_the_pin_hash():
+    key, ov = next(iter(_starbucks_pin().items()))
+    for bad in (dict(ov, address="16529 W 159th St, Lockport, IL"), dict(ov, directions="Take I-355."),
+                {k: v for k, v in ov.items() if k != "address"}, {k: v for k, v in ov.items() if k != "directions"}):
+        p = _plan("Where is the nearest Starbucks?", overrides={key: bad})
+        assert p.verdict == "hold" and p.reason == "override_tampered" and p.text is None, p
+    # an address added by hand to a pin hashed without one is tampering too
+    body = {"place": "Starbucks", "distance_m": 3380.0, "duration_s": 360.0}
+    plain = dict(body, confirmed_sha256=sha256(json.dumps(body, sort_keys=True)))
+    assert _plan("Where is the nearest Starbucks?", overrides={key: dict(plain, address=SBUX_ADDRESS)}).reason \
+        == "override_tampered"
+    # a pin without them is the basic pinned answer, as before
+    p = _plan("Where is the nearest Starbucks?", overrides={key: plain})
+    assert p.text == "Hi! Starbucks is about 2 miles away, roughly 6 minutes by car." and p.place == {"name": "Starbucks"}
+
+
+class NoLookup(GF.FixtureProvider):
+    """A provider that fails the test if anything is looked up."""
+    def search(self, *a, **k):
+        raise AssertionError("search")
+
+    def nearby(self, *a, **k):
+        raise AssertionError("nearby")
+
+    def routes(self, *a, **k):
+        raise AssertionError("routes")
+
+    def route(self, *a, **k):
+        raise AssertionError("route")
+
+
+def test_only_the_where_named_form_is_pinned_only():
+    for s in ("where is the nearest starbucks", "where's the nearest starbucks", "where is the lockbox"):
+        assert G.parse_question(s).pinned_only, s
+    for s in ("how close is the nearest starbucks", "how far is the nearest starbucks", "how far is sakura garden",
+              "where is the nearest grocery store", "where's the nearest hospital", "where is the pharmacy"):
+        assert not G.parse_question(s).pinned_only, s
+
+
+def test_an_unpinned_where_is_place_holds_before_any_lookup():
+    for overrides in (None, _starbucks_pin("cedar-1b")):  # no pins; a pin for another listing only
+        for msg in ("Where is the nearest Starbucks?", "Where's the nearest Starbucks?"):
+            p = _plan(msg, NoLookup(), overrides=overrides)
+            assert p.verdict == "hold" and p.reason == "unpinned_where" and p.text is None, (msg, p)
+            assert p.mode == "named" and p.dest == "the nearest starbucks" and not p.override and p.sent == ()
+    # the pack names Starbucks, not this place
+    p = _plan("Where is the nearest Peet's Coffee?", NoLookup(), overrides=_starbucks_pin())
+    assert p.verdict == "hold" and p.reason == "unpinned_where" and p.dest == "the nearest peet's coffee"
+    # the same place asked "how far" still goes to the live lookup, as before this change
+    prov = GF.FixtureProvider()
+    p = _plan("How far is the nearest Starbucks?", prov)
+    assert p.reason == "not_found" and [s[0] for s in prov.sent] == ["search"]
+
+
+def test_in_unit_where_questions_never_reach_the_map():
+    for msg in ("Where is the lockbox?", "Where is the wifi password?"):
+        p = _plan(msg, NoLookup())
+        assert p.verdict == "hold" and p.reason == "unpinned_where" and p.text is None and p.sent == (), (msg, p)
+
+
+def test_a_pin_without_an_address_renders_the_old_template_byte_for_byte():
+    body = {"place": "Midway", "distance_m": 40700.0, "duration_s": 2700.0}
+    ov = dict(body, confirmed_sha256=sha256(json.dumps(body, sort_keys=True)))
+    p = _plan("How far is Midway?", overrides={G.override_key("cedar-1a", "midway"): ov})
+    expected = "Hi! Midway is about 25 miles away, roughly 45 minutes by car."
+    assert _old_render("Midway", G.Route(40700.0, 2700.0), pinned=True) == expected
+    assert p.verdict == "answer" and p.override and p.text == expected and p.place == {"name": "Midway"}
+    # render() itself, both branches, pinned and live, with no address or directions
+    for meters in (120.0, 350.0, 480.0, 1300.0, 3380.0, 9000.0, 40700.0, 98000.0):
+        for secs in (60.0, 360.0, 2700.0, 4320.0):
+            for pinned in (False, True):
+                for label in ("Sakura Garden", "The nearest pharmacy, Cedar Pharmacy,"):
+                    r = G.Route(meters, secs)
+                    assert G.render(label, r, pinned=pinned) == G.render(label, r, pinned, None, None) \
+                        == _old_render(label, r, pinned=pinned), (label, r, pinned)
+
+
+def test_the_short_walk_carries_the_address_after_the_walk_sentence():
+    assert G.render("Rosa's Taqueria", G.Route(350.0, 60.0), pinned=True, address="12 Main St",
+                    directions="It's on the corner.") == \
+        "Hi! Rosa's Taqueria is a short walk, about 4 minutes. You'll find it at 12 Main St. It's on the corner."

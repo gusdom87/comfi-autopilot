@@ -13,7 +13,10 @@ from map data, never written by a model.
              (medical, emergency, police, fuel), a personal destination
              ("my friend's house", a street address, a guest's name) holds.
              The nearest hospital is a type like the others (Gus, Nov 2,
-             2026): its location and drive only.
+             2026): its location and drive only. A named place asked as
+             "where is / where's X" (Nov 3, 2026) answers only from an
+             operator pin for that listing; unpinned, it holds before any
+             lookup ("where is the lockbox" never reaches the map).
   lookup     a provider interface (search a place, list every place of a
              type within a radius, route to one or many). Offline tests use
              the fixture provider; OSMProvider calls Nominatim (search),
@@ -61,7 +64,9 @@ from map data, never written by a model.
              "roughly <Y> minutes by car." Under 0.3 miles: "Hi! <Place> is
              a short walk, about <Y> minutes." The listing's address never
              appears, and neither does a place name shaped like a street
-             address ("45 Archer Ave", "Unit 2"): such a place holds.
+             address ("45 Archer Ave", "Unit 2"): such a place holds. An
+             operator pin may add the destination's own street address and
+             a one-line directions note (Nov 3, 2026; see render).
 
 Every failure is a HOLD: no answer goes, the message follows the
 actuator's existing fallback path. Recall is the cost, never a wrong
@@ -254,6 +259,11 @@ _NAMED_FORMS = [re.compile(p) for p in (
     r"^is\s+(?P<dest>.+?)\s+(?:far|close|nearby|near\s+here|close\s+by)" + _TAIL + r"$",
     r"^distance\s+to\s+(?P<dest>.+?)" + _TAIL + r"$",
 )]
+# "Where is the nearest Starbucks?" (Gus, Nov 3, 2026), tried after the forms
+# above. The type forms run first, so "where is the nearest grocery store"
+# stays a type question. A named place in this form answers only from an
+# operator pin, never a live lookup: "where is the lockbox" is no map query.
+_WHERE_FORM = re.compile(r"^(?:where\s+(?:is|'s)|where's)\s+(?P<dest>.+?)" + _TAIL + r"$")
 _NEAR_TAIL = (r"(?:\s+(?:nearby|near\s+here|near\s+us|close\s+by|around\s+here|in\s+the\s+area|to\s+(?:here|us"
               r"|the\s+(?:house|unit|place|apartment|studio|property))|from\s+(?:here|the\s+(?:house|unit|place"
               r"|apartment|studio|property))|by\s+car|driving))*")
@@ -284,6 +294,7 @@ class Parsed:
     dest: str             # the destination phrase as the guest wrote it (folded)
     type_spec: object     # TypeSpec for mode "type"
     sentence: str
+    pinned_only: bool = False  # the where-is named form: an operator pin or a hold
 
 
 def type_for(phrase):
@@ -304,7 +315,7 @@ def parse_question(sentence):
             spec = type_for(m.group("type"))
             if spec is not None:
                 return Parsed("type", m.group("type").strip(), spec, s)
-    for rx in _NAMED_FORMS:
+    for rx in _NAMED_FORMS + [_WHERE_FORM]:
         m = rx.match(s)
         if m:
             dest = m.group("dest").strip(" ,")
@@ -312,7 +323,7 @@ def parse_question(sentence):
             spec = type_for(core)
             if spec is not None and (dest != core or core == dest):
                 return Parsed("type", core, spec, s)
-            return Parsed("named", dest, None, s)
+            return Parsed("named", dest, None, s, pinned_only=rx is _WHERE_FORM)
     return None
 
 
@@ -747,15 +758,30 @@ def fmt_minutes(minutes):
     return hours if rest == 0 else f"{hours} {rest} minutes"
 
 
-def render(place_label, route, pinned=False):
+def render(place_label, route, pinned=False, address=None, directions=None):
     """The answer text, from the template and computed slots only. A live
     lookup's drive time is OSRM's free-flow time, so it says "without
     traffic"; an operator-pinned answer (`pinned`, times the operator
-    checked) keeps the plain wording. The short walk needs no qualifier."""
+    checked) keeps the plain wording. The short walk needs no qualifier.
+
+    An operator pin may also carry the DESTINATION's own public street
+    address and a one-line directions note (Gus, Nov 3, 2026): "Hi!
+    <Place> is at <address>, about <X> miles away, roughly <Y> minutes by
+    car. <directions>" (the short walk adds "You'll find it at
+    <address>."). Both render only when the pin carries them; without
+    them the text is the plain template above, byte for byte. The
+    listing's own address is never rendered: no caller passes it."""
     if route.distance_m / MILE_M < WALK_UNDER_MILES:
-        return f"Hi! {place_label} is a short walk, about {fmt_minutes(route.distance_m / WALK_M_PER_MIN)}."
-    return f"Hi! {place_label} is about {fmt_miles(route.distance_m)} away, roughly " \
-           f"{fmt_minutes(route.duration_s / 60.0)} by car{'' if pinned else ' without traffic'}."
+        text = f"Hi! {place_label} is a short walk, about {fmt_minutes(route.distance_m / WALK_M_PER_MIN)}."
+        if address:
+            text += f" You'll find it at {address}."
+    else:
+        where = f"is at {address}, about" if address else "is about"
+        text = f"Hi! {place_label} {where} {fmt_miles(route.distance_m)} away, roughly " \
+               f"{fmt_minutes(route.duration_s / 60.0)} by car{'' if pinned else ' without traffic'}."
+    if directions:
+        text += " " + directions  # the note carries its own final period
+    return text
 
 
 @dataclass(frozen=True)
@@ -899,6 +925,8 @@ def plan(message, property_id, origin, provider, *, reservation=None, scope=None
     ov = overrides.get(override_key(property_id, parsed.dest))
     if ov is not None:
         return _from_override(ov, common)
+    if parsed.pinned_only:
+        return _hold("unpinned_where", "the where-is form answers only places the operator has pinned", **common)
     expect = None
     if parsed.mode == "type":
         spec = parsed.type_spec
@@ -926,8 +954,13 @@ def _from_override(ov, common, label=None):
     """An operator-pinned answer for this listing and destination (the
     correction flow, or the local pack): used only while its hash matches
     what was pinned. A nearest-of-type pin (`label`) keeps the type's
-    wording: "The nearest <label>, <place>, ..."."""
+    wording: "The nearest <label>, <place>, ...". A pin's `address` and
+    `directions` join the hashed body only when the record carries them,
+    so every pin without them verifies against the hash it always had."""
     body = {k: ov.get(k) for k in ("place", "distance_m", "duration_s")}
+    for k in ("address", "directions"):
+        if ov.get(k):
+            body[k] = ov[k]
     if ov.get("confirmed_sha256") != sha256(json.dumps(body, sort_keys=True)):
         return _hold("override_tampered", "a pinned override no longer matches its hash", **common)
     if not _name_ok(body["place"]):
@@ -936,8 +969,11 @@ def _from_override(ov, common, label=None):
         route = Route(float(body["distance_m"]), float(body["duration_s"]))
     except (TypeError, ValueError):
         return _hold("override_tampered", "a pinned override is unreadable", **common)
-    text = render(f"The nearest {label}, {body['place']}," if label else body["place"], route, pinned=True)
-    return GeoPlan("answer", "answer", "operator-pinned place", text, sha256(text), place={"name": body["place"]},
+    text = render(f"The nearest {label}, {body['place']}," if label else body["place"], route, pinned=True,
+                  address=body.get("address"), directions=body.get("directions"))
+    place = {"name": body["place"]}
+    place.update({k: body[k] for k in ("address", "directions") if k in body})  # the actuator's address allowance
+    return GeoPlan("answer", "answer", "operator-pinned place", text, sha256(text), place=place,
                    route={"distance_m": route.distance_m, "duration_s": route.duration_s}, override=True, **common)
 
 
