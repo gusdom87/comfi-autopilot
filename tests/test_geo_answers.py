@@ -124,6 +124,26 @@ def test_barred_types_and_personal_destinations_hold():
         assert p.verdict == "hold", (msg, p)
     p = _plan("How far is Jordan Lake?", forbidden_tokens=("Jordan", "Avery"))
     assert p.verdict == "hold" and "guest's name" in p.detail
+    # a NAMED medical, police, or fuel destination is barred before any lookup, whatever is pinned
+    # (the nearest-hospital type is answerable since Nov 2, 2026; a named hospital is not)
+    pin = _hospital_pin()
+    for msg, word in (("How far is Cedar General Hospital?", "hospital"),
+                      ("How far is Silver Cross Hospital?", "hospital"), ("How far is the nearest ER?", "er"),
+                      ("How far is the closest clinic?", "clinic"), ("How far is the nearest doctor?", "doctor"),
+                      ("How far is Cedar Medical Center?", "medical"),
+                      ("How far is the closest dentist?", "dentist"), ("How far is the police station?", "police"),
+                      ("How far is the nearest gas station?", "gas")):
+        for overrides in (None, pin):
+            prov = GF.FixtureProvider()
+            p = _plan(msg, prov, overrides=overrides)
+            assert p.verdict == "hold" and p.reason == "destination" and p.mode == "named", (msg, p)
+            assert p.detail == f"a barred kind of place: {word!r}" and prov.sent == [], (msg, p)
+    # urgent care and emergency wording hold on the request filter, even with the hospital pin
+    for msg in ("Where's the nearest urgent care?", "Where's the nearest emergency room?",
+                "How far is the nearest hospital emergency room?",
+                "How far is the nearest hospital? It's an emergency"):
+        p = _plan(msg, overrides=pin)
+        assert p.verdict == "hold" and p.reason == "request" and p.text is None, (msg, p)
 
 
 ADDRESS_NAMES = ("45 Archer Ave", "12 Main St", "Unit 2 Apt 3", "45th St", "200 W Elm Street", "7 Oak Lane",
@@ -616,6 +636,37 @@ def test_a_pinned_nearest_of_type_answer_keeps_the_type_wording_and_makes_no_loo
     # the three key kinds never collide
     assert len({G.override_key("cedar-1a", "nearest pharmacy"), G.type_override_key("cedar-1a", "pharmacy"),
                 G.coverage_key("cedar-1a", "pharmacy")}) == 3
+
+
+def _hospital_pin(listing="cedar-1a"):
+    """The local pack's nearest-hospital pin (Gus, Nov 2, 2026): Silver Cross Hospital, Google Maps, weekday midday."""
+    body = {"place": "Silver Cross Hospital", "distance_m": 11398.0, "duration_s": 840.0}
+    ov = dict(body, confirmed_sha256=sha256(json.dumps(body, sort_keys=True)), note="Google Maps, Tue 11 AM")
+    return {G.type_override_key(listing, "hospital"): ov}
+
+
+def test_the_nearest_hospital_answers_from_the_pinned_pack_and_makes_no_lookup():
+    pin = _hospital_pin()
+    for msg in ("How far is the nearest hospital?", "Where's the nearest hospital?", "How far is the hospital?",
+                "Is there a hospital nearby?", "Are there any hospitals nearby?", "closest hospital?",
+                "Hi! How far is the closest hospital from here? Thanks!"):
+        prov = RealMap()
+        p = _plan(msg, prov, overrides=pin)
+        assert p.verdict == "answer" and p.override and prov.sent == [], (msg, p)
+        assert p.mode == "type" and p.type_id == "hospital" and p.place == {"name": "Silver Cross Hospital"}
+        assert p.text == \
+            "Hi! The nearest hospital, Silver Cross Hospital, is about 7 miles away, roughly 15 minutes by car."
+        assert "traffic" not in p.text
+    # no pin on the real map: hold, and nothing is looked up
+    prov = RealMap()
+    p = _plan("How far is the nearest hospital?", prov)
+    assert p.verdict == "hold" and p.reason == "unverified_type" and p.type_id == "hospital" and prov.sent == []
+    # a pin for one listing does not answer for another, and a tampered pin holds
+    assert G.plan("How far is the nearest hospital?", "cedar-1b", GF.ORIGIN, RealMap(), reservation=OK, scope=SCOPE,
+                  overrides=pin).reason == "unverified_type"
+    key = G.type_override_key("cedar-1a", "hospital")
+    assert _plan("How far is the nearest hospital?", overrides={key: dict(pin[key], distance_m=1000.0)}).reason \
+        == "override_tampered"
 
 
 class OverpassHTTP:

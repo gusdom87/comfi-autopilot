@@ -9,9 +9,11 @@ from map data, never written by a model.
              closed vocabulary ("pharmacy", "Japanese restaurant"). The
              rest of the message must be greetings and thanks; any other
              content, a request, an issue word, a risky emoji, a stay or
-             money ask (the Phase 0 guard), a barred type (medical,
-             emergency, police, fuel), a personal destination ("my
-             friend's house", a street address, a guest's name) holds.
+             money ask (the Phase 0 guard), a barred named destination
+             (medical, emergency, police, fuel), a personal destination
+             ("my friend's house", a street address, a guest's name) holds.
+             The nearest hospital is a type like the others (Gus, Nov 2,
+             2026): its location and drive only.
   lookup     a provider interface (search a place, list every place of a
              type within a radius, route to one or many). Offline tests use
              the fixture provider; OSMProvider calls Nominatim (search),
@@ -146,6 +148,10 @@ TYPES = [
      TypeSpec("grocery", "grocery store", "supermarket", ("shop:supermarket", "shop:grocery"))),
     (r"pharmac(?:y|ies)|drug\s?stores?|chemists?",
      TypeSpec("pharmacy", "pharmacy", "pharmacy", ("amenity:pharmacy", "shop:chemist"))),
+    # Gus's decision, Nov 2, 2026: guests who work at or visit a hospital ask
+    # where the nearest one is. Location and drive only: a named hospital
+    # still holds (BARRED_DEST), and so does anything medical in the message.
+    (r"hospitals?", TypeSpec("hospital", "hospital", "hospital", ("amenity:hospital",))),
     (r"(?:train|metra|railway|rail|commuter\s+rail|commuter\s+train)\s+stations?|metra|train\s+stops?",
      # railway tags only: a public_transport=station alone can be a bus station
      TypeSpec("train_station", "train station", "train station", ("railway:station", "railway:halt"),
@@ -182,6 +188,8 @@ _TYPE_RES = [(re.compile(r"^(?:" + rx + r")$"), spec) for rx, spec in TYPES]
 
 # Never answered, whatever the data says: medical, emergency, police, fuel
 # ("gas" is also a safety word in the actuator), weapons, cannabis, adult.
+# Read on NAMED destinations only: "the nearest hospital" is the hospital
+# type above, never this list.
 BARRED_DEST = re.compile(
     r"\b(?:hospitals?|urgent\s+care|emergency|er|e\.r|clinics?|doctors?|dr|medical|medic\w*|dentists?|vets?"
     r"|veterinar\w*|police|cops?|sheriff|fire\s+(?:station|department|dept)|firehouse|gas|fuel|petrol|shelters?"
