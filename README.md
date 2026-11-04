@@ -19,7 +19,7 @@ What it operates:
 
 ## How Jev fits
 
-Jev is not this product. The urgency call on each message is made by the triage layer in this repo, a hackathon-built port of the operator's Jev pipeline (TypeSafe AI) to Muse Spark/Wonder; Jev's original tool, the hand-labeled dataset, and the Oct 7–14 pilot are pre-existing. The standard the triage layer is measured against is the operator's own judgment, recorded by hand: a pilot set of roughly 300 real guest messages he labeled himself, from which the graded eval set is drawn. Nothing here is trained; the models are prompted, and the graded record is what they answer to. Comfi Autopilot is everything around that decision: the connection to the booking data, the plays that turn a decision into coordinated work, and the autonomy ladder that decides what the system may do with it.
+Jev is not this product. The urgency call on each message is made by the triage layer in this repo, written during the hackathon on Muse Spark/Wonder. It implements a decision approach the operator had configured and piloted before the event with Jev (TypeSafe AI), a hosted tool he used like any API. What predates the event is data and design: his real guest messages (Jan 22 to Oct 9, 2026), his labels on them, one week of graded decisions from the Oct 7–14, 2026 log-only pilot, and the design itself (the Confirm / Act / Ignore vocabulary and the approve-first default). The standard the triage layer is measured against is the operator's own judgment, recorded by hand: the graded eval set was built from that pilot's graded reviews (109 reviews, 107 messages). A separate set of roughly 300 hand-labeled messages is his teaching set; only 2 of the 107 eval messages appear in it, so the 300 are not the eval set. Nothing here is trained; the models are prompted, and the graded record is what they answer to. Comfi Autopilot is everything around that decision: the connection to the booking data, the plays that turn a decision into coordinated work, and the autonomy ladder that decides what the system may do with it.
 
 ## Graduated autonomy
 
@@ -35,9 +35,9 @@ On the live record, 28 live messages graded as of Oct 29 (operator-labeled or ru
 
 ## Disclosure: pre-existing vs hackathon-built
 
-Pre-existing, disclosed as background and baseline only: Jev, the decision model by TypeSafe AI; the operator's hand-labeled dataset of real guest messages; and the shadow pilot the operator ran Oct 7–14, 2026, which graded the triage decisions the eval set is built from. None of that is presented as hackathon work.
+Pre-existing, disclosed as background and baseline only, and all of it data or design rather than code: the operator's real guest messages (Jan 22 to Oct 9, 2026) and his labels on them; one week of graded decisions from the shadow pilot he ran Oct 7–14, 2026 (the eval set is built from that pilot's graded reviews, not from his separate roughly 300-message hand-labeled teaching set — only 2 of the 107 eval messages appear in that set); and the decision design itself (the Confirm / Act / Ignore vocabulary and the approve-first default), which he had configured and piloted before the event using Jev, TypeSafe AI's hosted decision tool, used like any API and never trained by him. None of that is presented as hackathon work.
 
-Built during the hackathon, Oct 26 to Nov 4, 2026 — the Comfi Autopilot layer in this repo: the port of the pipeline to the Meta Model API (Muse Spark for fast triage, Muse Wonder for reasoning and drafts), the eval harness and confidence ledger, the graduated-autonomy ladder, the plays engine (early check-in, cleaner-done to guest-ready, in-stay issues with handyman dispatch, exterior-camera checks, late checkout), the outcome metrics, the deterministic frame gate for camera stills (plain code that refuses any frame without a usable, unclipped subject before a model or a human ever sees it as evidence), and this judge sandbox.
+Built during the hackathon, Oct 26 to Nov 4, 2026 — the Comfi Autopilot layer in this repo: the triage layer's implementation on the Meta Model API (Muse Spark for fast triage, Muse Wonder for reasoning and drafts), the eval harness and confidence ledger, the graduated-autonomy ladder, the plays engine (early check-in, cleaner-done to guest-ready, in-stay issues with handyman dispatch, exterior-camera checks, late checkout), the outcome metrics, the deterministic frame gate for camera stills (plain code that refuses any frame without a usable, unclipped subject before a model or a human ever sees it as evidence), and this judge sandbox.
 
 Also built: a per-property knowledge base module (src/jev/knowledge.py), with trust-tagged facts in three statuses (known, unverified, unknown), a code scrubber tested on dial-format codes, and an operator-confirmation promotion log. It ships with 12 tests and is not yet wired into the plays.
 
@@ -59,7 +59,7 @@ Support is certified by exact model, firmware, power type, and connector version
 
 Requirements: Python 3.10 or newer. The code uses the standard library only; the tests need pytest.
 
-Tests (no key and no network needed; 437 tests at this commit):
+Tests (no key and no network needed; 690 tests at this commit):
 
     python3 -m pytest -q
 

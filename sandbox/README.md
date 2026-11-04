@@ -4,11 +4,14 @@ short-term rentals (guest communication, cleaning turnovers, in-stay
 issues, handyman dispatch, special requests, and exterior-camera
 oversight), designed to connect to Hospitable; this build runs on a
 staged fixture world (no live Hospitable or Turno connection). The
-urgency decisions inside it are made by the triage layer in this repo, a
-hackathon-built port of the operator's Jev pipeline (TypeSafe AI) to Muse
-Spark/Wonder; Jev's original tool, the hand-labeled dataset, and the
-Oct 7–14 pilot are pre-existing. Comfi Autopilot is the product on this
-page.
+urgency decisions inside it are made by the triage layer in this repo,
+written during the hackathon on Muse Spark/Wonder. It implements a
+decision approach the operator had configured and piloted before the
+event with Jev (TypeSafe AI), a hosted tool used like any API; what
+predates the event is data and design (the guest messages and labels,
+the Oct 7–14 pilot's graded decisions, and the Confirm / Act / Ignore
+vocabulary with its approve-first default), not code. Comfi Autopilot
+is the product on this page.
 
 One command, no build step:
   JEV_SANDBOX_PORT=8791 python3 sandbox/server.py

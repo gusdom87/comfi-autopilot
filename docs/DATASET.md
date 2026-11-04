@@ -1,7 +1,8 @@
 # Eval dataset — how the ground truth was built (Oct 26, 2026)
 
 Source (pre-event background, disclosed): the operator's Week-1 shadow pilot
-(Oct 7–14, 2026). The pilot system scored guest messages with a fine-grained
+(Oct 7–14, 2026). The pilot system scored guest messages (drawn from the
+operator's message history, Jan 22 to Oct 9, 2026) with a fine-grained
 category plus confidence-based action bands; the operator then hand-reviewed
 every decision as correct, unsure, or wrong. 109 reviews, 107 unique messages.
 
@@ -31,7 +32,11 @@ own Confirm / Act / Ignore calls. Those rows now carry ground truth from
 the regrade (marked human_verdict=relabeled in the dataset file), bringing
 the scored set to n=107: Confirm 39, Act 32, Ignore 36.
 
-Note on counts: the roughly 300 messages the operator hand-labeled in the pilot are the full teaching set; the 109 graded reviews and the 107-row final eval set are the graded subset drawn from it. The final eval ran
+Note on counts: the roughly 300 messages the operator hand-labeled are a
+separate teaching set, not the source of the eval set — only 2 of the 107
+eval messages appear in it. The 109 graded reviews come from the pilot's own
+graded record above, and the 107-row final eval set is drawn from those
+reviews. The final eval ran
 on this 107-row set with the shipped prompt (n=101 scored, 6 few-shot
 examples excluded): overall accuracy 80.2%, decisive accuracy 82.3%,
 high-confidence accuracy 79.5% (run final-107-live), the model's raw record
