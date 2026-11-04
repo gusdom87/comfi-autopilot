@@ -6,7 +6,7 @@ Built Oct 26 to Nov 4, 2026 for the Meta Global AI Developer Hackathon (Indie tr
 
 ## What it is
 
-Comfi Autopilot is designed to connect to Hospitable, the property-management system the bookings already live in, and to work from the real operating data: every reservation, check-in time, and cleaning on the calendar. This build runs on a staged fixture world in that data model (no live Hospitable or Turno connection). On top of that data it coordinates the work of the business end to end — the guest asking, the cleaner finishing, the issue mid-stay — as one operation instead of a pile of separate messages. Every action it might take is gated by graduated autonomy: closing noise is a low right, messaging a guest or a cleaner is a middle right, and charging a guest is the highest right, human-approved until earned.
+Comfi Autopilot is designed to connect to Hospitable, the property-management system the bookings already live in, and to work from the real operating data: every reservation, check-in time, and cleaning on the calendar. This build runs on a staged fixture world in that data model (no live Hospitable or Turno connection). On top of that data it coordinates the work of the business end to end — the guest asking, the cleaner finishing, the issue mid-stay — as one operation instead of a pile of separate messages. Every action it might take is gated by graduated autonomy: closing noise is a low right, messaging a guest or a cleaner is a middle right, and charging a guest is never earned at all: it stays with the human, whatever the graded record says.
 
 What it operates:
 
@@ -48,6 +48,8 @@ This build has no live camera connector and no live camera feed. Every camera pl
 In production, a camera connection has to supply motion-triggered frames, a fresh frame on demand, repeated frames at separate times, the latest frames on request, online and offline events with retained history, a stable mapping of each camera to one property, and frames clear enough for the frame gate and the vision check.
 
 Production camera support is limited to these classes. None of these connectors is built in this repo.
+
+Scope note: the paragraphs above describe this repo's sandbox build. The operator also runs a separate live system on his own machine, outside this repo because it holds his keys and his guests' data. That live system connects to Hospitable, Turno, Wyze and his texting line, and the demo film's camera check, owner statement and live trial numbers come from it. None of the live system's code is in this repo, and none is presented as repo work.
 
 - Certified ONVIF Profile S/T or RTSP IP camera systems, including tested NVR channels.
 - UniFi Protect cameras through a UniFi OS Protect console.
