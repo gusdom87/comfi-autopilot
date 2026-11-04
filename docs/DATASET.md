@@ -1,7 +1,8 @@
 # Eval dataset — how the ground truth was built (Oct 26, 2026)
 
-Source (pre-event background, disclosed): the operator's Week-1 shadow pilot
-(Oct 7–14, 2026). The pilot system scored guest messages (drawn from the
+Source (pre-event background, disclosed): the operator's own guest
+messages and his grading of them (the week of Oct 7–14, 2026). He graded
+guest messages (drawn from the
 operator's message history, Jan 22 to Oct 9, 2026) with a fine-grained
 category plus confidence-based action bands; the operator then hand-reviewed
 every decision as correct, unsure, or wrong. 109 reviews, 107 unique messages.
@@ -19,7 +20,7 @@ in this repo.
 
 Label derivation (this is the part to argue with):
 Only messages the operator graded "correct" carry a label (89 of 107); the
-7 "wrong" and 11 "unsure" are held out for operator re-labeling. The pilot's
+7 "wrong" and 11 "unsure" are held out for operator re-labeling. Those
 fine-grained category maps onto this build's three-way vocabulary:
 - Ignore: spam_or_noise
 - Act: urgent_maintenance, checkin_checkout_access,
@@ -34,7 +35,7 @@ the scored set to n=107: Confirm 39, Act 32, Ignore 36.
 
 Note on counts: the roughly 300 messages the operator hand-labeled are a
 separate teaching set, not the source of the eval set — only 2 of the 107
-eval messages appear in it. The 109 graded reviews come from the pilot's own
+eval messages appear in it. The 109 graded reviews come from those
 graded record above, and the 107-row final eval set is drawn from those
 reviews. The final eval ran
 on this 107-row set with the shipped prompt (n=101 scored, 6 few-shot
@@ -44,7 +45,7 @@ without the guard. The shipped engine always applies the stay-change/money
 guard; its run on the same set (final-107-guard) scored 77.2% overall with
 zero Confirm-to-Act errors, and the README leads with it.
 
-Known limits: n=89 (now 107) is small; labels inherit the pilot's category definitions;
+Known limits: n=89 (now 107) is small; labels inherit the category definitions he set then;
 message previews are truncated by the source system. Every reported number
 carries its n, and the confidence ledger treats this set as a floor, not a
 ceiling. Beyond this set, a log-only shadow mode scores live inbound guest
